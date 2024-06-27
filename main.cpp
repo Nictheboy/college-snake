@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <iostream>
+#include <list>
+#include <stack>
 #include <vector>
 
 constexpr int Height = 30;
@@ -6,11 +9,16 @@ constexpr int Width = 40;
 constexpr int EmptyIdx = -1;
 constexpr int SelfName = 2023202296;
 
-constexpr double ValueOfScoreOne = 100;
-constexpr double ValueOfScoreTwo = 110;
-constexpr double ValueOfScoreThree = 120;
-constexpr double ValueOfScoreFive = 130;
-constexpr double valueOfLength = 100;
+constexpr int ShieldCost = 20;
+constexpr int ShieldCD = 30;
+constexpr int ShieldET = 5;
+constexpr int ScorePerLength = 20;
+constexpr int LengthOfLengthBean = 2;
+constexpr int ScorePanaltyOfTrap = 10;
+
+constexpr double ValueBaseOfScore = 200;
+constexpr double ValuePerScore = 50;
+constexpr double ValueOfLength = 100;
 
 constexpr int ValueSpreadRounds = 70;
 constexpr double ValueSpreadDecline = 0.75;  // percentage
@@ -79,6 +87,11 @@ enum Operation {
     Shield = 4,
 };
 
+struct SnakeIdxAndOperation {
+    int Idx;
+    Operation Op;
+};
+
 Operation Reverse(Operation operation) {
     switch (operation) {
         case Operation::Left:
@@ -124,12 +137,30 @@ int DwOfOperation(Operation operation) {
     }
 }
 
-enum class ObjType {
+enum ObjType {
+    ScoreZero = 0,
+    ScoreOne = 1,
+    ScoreTwo = 2,
+    ScoreThree = 3,
+    ScoreFour = 4,
+    ScoreFive = 5,
+    ScoreSix = 6,
+    ScoreSeven = 7,
+    ScoreEight = 8,
+    ScoreNine = 9,
+    ScoreTen = 10,
+    ScoreEleven = 11,
+    ScoreTwelve = 12,
+    ScoreThirteen = 13,
+    ScoreFourteen = 14,
+    ScoreFifteen = 15,
+    ScoreSixteen = 16,
+    ScoreSeventeen = 17,
+    ScoreEighteen = 18,
+    ScoreNineteen = 19,
+    ScoreTwenty = 20,
+    ScoreTooLarge = 21,
     None,
-    ScoreOne,
-    ScoreTwo,
-    ScoreThree,
-    ScoreFive,
     Length,
     Trap,
     Wall,
@@ -141,13 +172,13 @@ struct Point {
 
 struct SnakeInfo {
     int Idx;
+    bool Alive;
     int Name;
-    int Length;
     int Score;
     Operation LastOperation;
     int ShieldCD;  // cold delay
     int ShieldET;  // effect time remaining
-    std::vector<Point> Body;
+    std::list<Point> Body;
 };
 
 struct Cell {
@@ -159,14 +190,14 @@ struct Game {
     int TimeRemain;
     int SelfIdx;
     std::vector<SnakeInfo> SnakeInfos;
-    Field<Cell> Map;
+    Cell Map[Height][Width];
 
     Game() {
         std::cin >> TimeRemain;
 
         for (int h = 0; h < Height; h++) {
             for (int w = 0; w < Width; w++) {
-                Map[h][w] = Cell{.SnakeIdx = -1, .Obj = ObjType::None};
+                Map[h][w] = Cell{.SnakeIdx = -1, .Obj = None};
             }
         }
 
@@ -175,31 +206,25 @@ struct Game {
         for (int i = 0; i < obj_cnt; i++) {
             int h, w, type_idx;
             std::cin >> h >> w >> type_idx;
-            ObjType type = ObjType::None;
+            ObjType type = None;
             switch (type_idx) {
                 case -4:
-                    type = ObjType::Wall;
+                    type = Wall;
                     break;
                 case -2:
-                    type = ObjType::Trap;
+                    type = Trap;
                     break;
                 case -1:
-                    type = ObjType::Length;
+                    type = Length;
                     break;
-                case 1:
-                    type = ObjType::ScoreOne;
-                    break;
-                case 2:
-                    type = ObjType::ScoreTwo;
-                    break;
-                case 3:
-                    type = ObjType::ScoreThree;
-                    break;
-                case 5:
-                    type = ObjType::ScoreFive;
+                default:
+                    if (type > ScoreZero && type < ScoreTooLarge) {
+                        type = (ObjType)(ScoreZero + type_idx);
+                    }
                     break;
             }
-            Map[h][w].Obj = type;
+            if (Map[h][w].Obj != Wall)
+                Map[h][w].Obj = type;
         }
 
         int snake_cnt;
@@ -213,8 +238,8 @@ struct Game {
             }
             SnakeInfos[snake_idx] = SnakeInfo{
                 .Idx = snake_idx,
+                .Alive = true,
                 .Name = name,
-                .Length = length,
                 .Score = score,
                 .LastOperation = (Operation)operation,
                 .ShieldCD = shield_cd,
@@ -231,23 +256,26 @@ struct Game {
 
     bool CanOperate(int SnakeIdx, Operation operation) {
         if (operation == Operation::Shield) {
-            return SnakeInfos[SnakeIdx].ShieldCD <= 0;
+            return SnakeInfos[SnakeIdx].ShieldCD <= 0 && SnakeInfos[SnakeIdx].Score > ShieldCost;
         }
         if (SnakeInfos[SnakeIdx].LastOperation == Reverse(operation)) {
+            return false;
+        }
+        if (!SnakeInfos[SnakeIdx].Alive) {
             return false;
         }
         int dh, dw;
         dh = DhOfOperation(operation);
         dw = DwOfOperation(operation);
         int head_h, head_w, head_h_next, head_w_next;
-        head_h = SnakeInfos[SnakeIdx].Body[0].h;
-        head_w = SnakeInfos[SnakeIdx].Body[0].w;
+        head_h = SnakeInfos[SnakeIdx].Body.front().h;
+        head_w = SnakeInfos[SnakeIdx].Body.front().w;
         head_h_next = head_h + dh;
         head_w_next = head_w + dw;
         if (head_h_next < 0 || head_h_next >= Height || head_w_next < 0 || head_w_next >= Width) {
             return false;
         }
-        if (Map[head_h_next][head_w_next].Obj == ObjType::Wall) {
+        if (Map[head_h_next][head_w_next].Obj == Wall) {
             return false;
         }
         if (Map[head_h_next][head_w_next].SnakeIdx != EmptyIdx &&
@@ -255,6 +283,243 @@ struct Game {
             return false;
         }
         return true;
+    }
+
+   private:
+    struct RevokeEntry {
+        struct SnakeInfoRevokeEntry {
+            int SnakeIdx;
+            SnakeInfo Last;
+        };
+
+        struct MapRevokeEntry {
+            int H, W;
+            Cell Last;
+        };
+
+        std::vector<SnakeInfoRevokeEntry> SnakeInfoRevokeList;
+        std::vector<MapRevokeEntry> MapRevokeList;
+    };
+
+    std::stack<RevokeEntry> RevokeStack;
+
+   public:
+    void ImagineTailLengthen(int snake_idx, RevokeEntry& r_entry) {
+        const int tail_h = SnakeInfos[snake_idx].Body.back().h;
+        const int tail_w = SnakeInfos[snake_idx].Body.back().w;
+        const int pre_tail_h = (++SnakeInfos[snake_idx].Body.rbegin())->h;
+        const int pre_tail_w = (++SnakeInfos[snake_idx].Body.rbegin())->w;
+        Operation direction;
+        for (auto i : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+            if (pre_tail_h + DhOfOperation(i) == tail_h && pre_tail_w + DwOfOperation(i) == tail_w) {
+                direction = i;
+                break;
+            }
+        }
+        if (direction == Operation::Right) {
+            if (tail_w == 39) {
+                if (tail_h == 29)
+                    direction = Operation::Up;
+                else
+                    direction = Operation::Down;
+            } else {
+                direction = Operation::Right;
+            }
+        } else if (direction == Operation::Down) {
+            if (tail_h == 29) {
+                if (tail_w == 39)
+                    direction = Operation::Left;
+                else
+                    direction = Operation::Right;
+            } else {
+                direction = Operation::Down;
+            }
+        } else if (direction == Operation::Left) {
+            if (tail_w == 0) {
+                if (tail_h == 29)
+                    direction = Operation::Up;
+                else
+                    direction = Operation::Down;
+            } else {
+                direction = Operation::Left;
+            }
+        } else {
+            if (tail_h == 0) {
+                if (tail_w == 39)
+                    direction = Operation::Left;
+                else
+                    direction = Operation::Right;
+            } else {
+                direction = Operation::Up;
+            }
+        }
+        const int next_h = tail_h + DhOfOperation(direction);
+        const int next_w = tail_w + DwOfOperation(direction);
+        r_entry.MapRevokeList.push_back(RevokeEntry::MapRevokeEntry{
+            .H = next_h,
+            .W = next_w,
+            .Last = Map[next_h][next_w],
+        });
+        Map[next_h][next_w].SnakeIdx = snake_idx;
+        SnakeInfos[snake_idx].Body.push_back(Point{.h = next_h, .w = next_w});
+    }
+
+    void ImagineDeath(int snake_idx, RevokeEntry& r_entry) {
+        int s_score = SnakeInfos[snake_idx].Score;
+        for (const auto& point : SnakeInfos[snake_idx].Body) {
+            r_entry.MapRevokeList.push_back(RevokeEntry::MapRevokeEntry{
+                .H = point.h,
+                .W = point.w,
+                .Last = Map[point.h][point.w],
+            });
+            Map[point.h][point.w] = {.SnakeIdx = EmptyIdx, .Obj = None};
+            if (s_score <= 0) {
+                break;
+            }
+            if (Map[point.h][point.w].Obj != None) {
+                continue;
+            }
+            if (s_score >= 20) {
+                Map[point.h][point.w].Obj = ScoreTwenty;
+                s_score -= 20;
+            } else {
+                Map[point.h][point.w].Obj = (ObjType)(ScoreZero + s_score);
+                s_score = 0;
+            }
+        }
+        SnakeInfos[snake_idx].Alive = false;
+        SnakeInfos[snake_idx].Body.clear();
+    }
+
+    void ImagineOperations(std::vector<SnakeIdxAndOperation> operations, bool lucky_tail) {
+        RevokeEntry r_entry;
+        TimeRemain--;
+        std::sort(operations.begin(), operations.end(), [](const SnakeIdxAndOperation& a, const SnakeIdxAndOperation& b) {
+            return a.Idx < b.Idx;
+        });
+        for (const auto& op : operations) {
+            SnakeInfo& snake = SnakeInfos[op.Idx];
+            r_entry.SnakeInfoRevokeList.push_back(RevokeEntry::SnakeInfoRevokeEntry{
+                .SnakeIdx = op.Idx,
+                .Last = snake,
+            });
+            if (op.Op == Operation::Shield) {
+                if (snake.ShieldCD > 0) {
+                    ImagineDeath(op.Idx, r_entry);
+                } else {
+                    snake.ShieldCD = ShieldCD;
+                    snake.ShieldET = ShieldET;
+                    snake.Score -= ShieldCost;
+                }
+            }
+        }
+        for (const auto& op : operations) {
+            SnakeInfo& snake = SnakeInfos[op.Idx];
+            const Operation operation = op.Op;
+            if (op.Op != Operation::Shield) {
+                if (snake.ShieldET > 0) {
+                    snake.ShieldET--;
+                }
+                if (snake.ShieldCD > 0) {
+                    snake.ShieldCD--;
+                }
+                const int dh = DhOfOperation(operation);
+                const int dw = DwOfOperation(operation);
+                const int head_h = snake.Body.front().h;
+                const int head_w = snake.Body.front().w;
+                const int head_h_next = head_h + dh;
+                const int head_w_next = head_w + dw;
+                if (head_h_next < 0 || head_h_next >= Height || head_w_next < 0 || head_w_next >= Width) {
+                    ImagineDeath(op.Idx, r_entry);
+                    continue;
+                }
+                const Cell head_next_cell = Map[head_h_next][head_w_next];
+                r_entry.MapRevokeList.push_back(RevokeEntry::MapRevokeEntry{
+                    .H = head_h_next,
+                    .W = head_w_next,
+                    .Last = head_next_cell,
+                });
+                const int tail_h = snake.Body.back().h;
+                const int tail_w = snake.Body.back().w;
+                r_entry.MapRevokeList.push_back(RevokeEntry::MapRevokeEntry{
+                    .H = tail_h,
+                    .W = tail_w,
+                    .Last = Map[tail_h][tail_w],
+                });
+
+                // Move Logic
+                snake.Body.push_front(Point{.h = head_h_next, .w = head_w_next});
+                snake.Body.pop_back();
+                Map[head_h_next][head_w_next].SnakeIdx = op.Idx;  // do not change Obj
+                Map[tail_h][tail_w] = Cell{.SnakeIdx = EmptyIdx, .Obj = None};
+            }
+        }
+        for (const auto& op : operations) {
+            SnakeInfo& snake = SnakeInfos[op.Idx];
+            const int head_h = snake.Body.front().h;
+            const int head_w = snake.Body.front().w;
+            const int old_score = snake.Score;
+            int lengthen = 0;
+            switch (Map[head_h][head_w].Obj) {
+                case Length:
+                    lengthen += 2;
+                    break;
+
+                case Trap:
+                    snake.Score -= ScorePanaltyOfTrap;
+                    break;
+
+                case Wall:
+                    ImagineDeath(op.Idx, r_entry);
+                    continue;
+
+                default:
+                    if (Map[head_h][head_w].Obj > ScoreZero && Map[head_h][head_w].Obj < ScoreTooLarge) {
+                        snake.Score += Map[head_h][head_w].Obj - ScoreZero;
+                    }
+            }
+            Map[head_h][head_w].Obj = None;
+            lengthen += snake.Score / ScorePerLength - old_score / ScorePerLength;
+            lengthen = lucky_tail ? LengthOfLengthBean : lengthen;
+            if (lengthen-- > 0) {
+                ImagineTailLengthen(op.Idx, r_entry);
+            }
+        }
+        for (const auto& op : operations) {
+            if (!SnakeInfos[op.Idx].Alive || SnakeInfos[op.Idx].ShieldET > 0) {
+                continue;
+            }
+            SnakeInfo& snake = SnakeInfos[op.Idx];
+            for (auto& other_snake : SnakeInfos) {
+                if (other_snake.Idx == snake.Idx) {
+                    continue;
+                }
+                for (auto& point : other_snake.Body) {
+                    if (point.h == snake.Body.front().h && point.w == snake.Body.front().w) {
+                        if (point.h == other_snake.Body.front().h && point.w == other_snake.Body.front().w) {
+                            ImagineDeath(other_snake.Idx, r_entry);
+                        }
+                        ImagineDeath(op.Idx, r_entry);
+                        break;
+                    }
+                }
+            }
+        }
+        RevokeStack.push(r_entry);
+    }
+
+    void RevokeOperations() {
+        RevokeEntry r_entry = RevokeStack.top();
+        RevokeStack.pop();
+        TimeRemain++;
+        for (int i = r_entry.SnakeInfoRevokeList.size() - 1; i >= 0; i--) {
+            auto& item = r_entry.SnakeInfoRevokeList[i];
+            SnakeInfos[item.SnakeIdx] = item.Last;
+        }
+        for (int i = r_entry.MapRevokeList.size() - 1; i >= 0; i--) {
+            auto& item = r_entry.MapRevokeList[i];
+            Map[item.H][item.W] = item.Last;
+        }
     }
 };
 
@@ -268,20 +533,11 @@ Field<double> CreateValueMap(Game& game) {
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             Map[h][w] = 0;
-            if (game.Map[h][w].Obj == ObjType::ScoreOne) {
-                Map[h][w] = ValueOfScoreOne;
+            if (game.Map[h][w].Obj > ScoreZero && game.Map[h][w].Obj < ScoreTooLarge) {
+                Map[h][w] = ValuePerScore * (game.Map[h][w].Obj - ScoreZero) + ValueBaseOfScore;
             }
-            if (game.Map[h][w].Obj == ObjType::ScoreTwo) {
-                Map[h][w] = ValueOfScoreTwo;
-            }
-            if (game.Map[h][w].Obj == ObjType::ScoreThree) {
-                Map[h][w] = ValueOfScoreThree;
-            }
-            if (game.Map[h][w].Obj == ObjType::ScoreFive) {
-                Map[h][w] = ValueOfScoreFive;
-            }
-            if (game.Map[h][w].Obj == ObjType::Length) {
-                Map[h][w] = valueOfLength;
+            if (game.Map[h][w].Obj == Length) {
+                Map[h][w] = ValueOfLength;
             }
         }
     }
@@ -330,8 +586,8 @@ int main() {
         dh = DhOfOperation(operation);
         dw = DwOfOperation(operation);
         int head_h, head_w, head_h_next, head_w_next;
-        head_h = game.SnakeInfos[game.SelfIdx].Body[0].h;
-        head_w = game.SnakeInfos[game.SelfIdx].Body[0].w;
+        head_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
+        head_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
         head_h_next = head_h + dh;
         head_w_next = head_w + dw;
         double value = ValueMap[head_h_next][head_w_next];

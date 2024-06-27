@@ -15,6 +15,62 @@ constexpr double valueOfLength = 100;
 constexpr int ValueSpreadRounds = 70;
 constexpr double ValueSpreadDecline = 0.75;  // percentage
 
+//
+//  Generic Field
+//
+
+template <typename T>
+class Field {
+   private:
+    T* values;
+
+   public:
+    Field() {
+        values = new T[Height * Width];
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                (*this)[h][w] = T();
+            }
+        }
+    }
+
+    ~Field() {
+        if (values)
+            delete[] values;
+    }
+
+    Field(Field& field) = delete;
+    Field(Field&& field) {
+        values = field.values;
+        field.values = nullptr;
+    };
+    void operator=(Field& field) = delete;
+    void operator=(Field&& field) {
+        if (values)
+            delete[] values;
+        values = field.values;
+        field.values = nullptr;
+    };
+
+    T* operator[](int h) {
+        return values + h * Width;
+    }
+
+    Field<T> Clone() const {
+        Field<T> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = (*this)[h][w];
+            }
+        }
+        return new_field;
+    }
+};
+
+//
+//  Basic Definitions and Game Rules
+//
+
 enum Operation {
     Left = 0,
     Up = 1,
@@ -99,145 +155,143 @@ struct Cell {
     ObjType Obj;
 };
 
-typedef struct Game {
+struct Game {
     int TimeRemain;
     int SelfIdx;
     std::vector<SnakeInfo> SnakeInfos;
-    Cell Map[Height][Width];
-}* PGame;
+    Field<Cell> Map;
 
-PGame CreateGame() {
-    PGame pGame = new Game();
-    std::cin >> pGame->TimeRemain;
+    Game() {
+        std::cin >> TimeRemain;
 
-    for (int h = 0; h < Height; h++) {
-        for (int w = 0; w < Width; w++) {
-            pGame->Map[h][w] = Cell{.SnakeIdx = -1, .Obj = ObjType::None};
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                Map[h][w] = Cell{.SnakeIdx = -1, .Obj = ObjType::None};
+            }
+        }
+
+        int obj_cnt;
+        std::cin >> obj_cnt;
+        for (int i = 0; i < obj_cnt; i++) {
+            int h, w, type_idx;
+            std::cin >> h >> w >> type_idx;
+            ObjType type = ObjType::None;
+            switch (type_idx) {
+                case -4:
+                    type = ObjType::Wall;
+                    break;
+                case -2:
+                    type = ObjType::Trap;
+                    break;
+                case -1:
+                    type = ObjType::Length;
+                    break;
+                case 1:
+                    type = ObjType::ScoreOne;
+                    break;
+                case 2:
+                    type = ObjType::ScoreTwo;
+                    break;
+                case 3:
+                    type = ObjType::ScoreThree;
+                    break;
+                case 5:
+                    type = ObjType::ScoreFive;
+                    break;
+            }
+            Map[h][w].Obj = type;
+        }
+
+        int snake_cnt;
+        std::cin >> snake_cnt;
+        SnakeInfos.resize(snake_cnt);
+        for (int snake_idx = 0; snake_idx < snake_cnt; snake_idx++) {
+            int name, length, score, operation, shield_cd, shield_et;
+            std::cin >> name >> length >> score >> operation >> shield_cd >> shield_et;
+            if (name == SelfName) {
+                SelfIdx = snake_idx;
+            }
+            SnakeInfos[snake_idx] = SnakeInfo{
+                .Idx = snake_idx,
+                .Name = name,
+                .Length = length,
+                .Score = score,
+                .LastOperation = (Operation)operation,
+                .ShieldCD = shield_cd,
+                .ShieldET = shield_et,
+            };
+            for (int i = 0; i < length; i++) {
+                int h, w;
+                std::cin >> h >> w;
+                SnakeInfos[snake_idx].Body.push_back(Point{.h = h, .w = w});
+                Map[h][w].SnakeIdx = snake_idx;
+            }
         }
     }
 
-    int obj_cnt;
-    std::cin >> obj_cnt;
-    for (int i = 0; i < obj_cnt; i++) {
-        int h, w, type_idx;
-        std::cin >> h >> w >> type_idx;
-        ObjType type = ObjType::None;
-        switch (type_idx) {
-            case -4:
-                type = ObjType::Wall;
-                break;
-            case -2:
-                type = ObjType::Trap;
-                break;
-            case -1:
-                type = ObjType::Length;
-                break;
-            case 1:
-                type = ObjType::ScoreOne;
-                break;
-            case 2:
-                type = ObjType::ScoreTwo;
-                break;
-            case 3:
-                type = ObjType::ScoreThree;
-                break;
-            case 5:
-                type = ObjType::ScoreFive;
-                break;
+    bool CanOperate(int SnakeIdx, Operation operation) {
+        if (operation == Operation::Shield) {
+            return SnakeInfos[SnakeIdx].ShieldCD <= 0;
         }
-        pGame->Map[h][w].Obj = type;
-    }
-
-    int snake_cnt;
-    std::cin >> snake_cnt;
-    pGame->SnakeInfos.resize(snake_cnt);
-    for (int snake_idx = 0; snake_idx < snake_cnt; snake_idx++) {
-        int name, length, score, operation, shield_cd, shield_et;
-        std::cin >> name >> length >> score >> operation >> shield_cd >> shield_et;
-        if (name == SelfName) {
-            pGame->SelfIdx = snake_idx;
+        if (SnakeInfos[SnakeIdx].LastOperation == Reverse(operation)) {
+            return false;
         }
-        pGame->SnakeInfos[snake_idx] = SnakeInfo{
-            .Idx = snake_idx,
-            .Name = name,
-            .Length = length,
-            .Score = score,
-            .LastOperation = (Operation)operation,
-            .ShieldCD = shield_cd,
-            .ShieldET = shield_et,
-        };
-        for (int i = 0; i < length; i++) {
-            int h, w;
-            std::cin >> h >> w;
-            pGame->SnakeInfos[snake_idx].Body.push_back(Point{.h = h, .w = w});
-            pGame->Map[h][w].SnakeIdx = snake_idx;
+        int dh, dw;
+        dh = DhOfOperation(operation);
+        dw = DwOfOperation(operation);
+        int head_h, head_w, head_h_next, head_w_next;
+        head_h = SnakeInfos[SnakeIdx].Body[0].h;
+        head_w = SnakeInfos[SnakeIdx].Body[0].w;
+        head_h_next = head_h + dh;
+        head_w_next = head_w + dw;
+        if (head_h_next < 0 || head_h_next >= Height || head_w_next < 0 || head_w_next >= Width) {
+            return false;
         }
+        if (Map[head_h_next][head_w_next].Obj == ObjType::Wall) {
+            return false;
+        }
+        if (Map[head_h_next][head_w_next].SnakeIdx != EmptyIdx &&
+            Map[head_h_next][head_w_next].SnakeIdx != SnakeIdx) {
+            return false;
+        }
+        return true;
     }
-    return pGame;
-}
+};
 
-bool CanOperate(PGame pGame, int SnakeIdx, Operation operation) {
-    if (operation == Operation::Shield) {
-        return pGame->SnakeInfos[SnakeIdx].ShieldCD <= 0;
-    }
-    if (pGame->SnakeInfos[SnakeIdx].LastOperation == Reverse(operation)) {
-        return false;
-    }
-    int dh, dw;
-    dh = DhOfOperation(operation);
-    dw = DwOfOperation(operation);
-    int head_h, head_w, head_h_next, head_w_next;
-    head_h = pGame->SnakeInfos[SnakeIdx].Body[0].h;
-    head_w = pGame->SnakeInfos[SnakeIdx].Body[0].w;
-    head_h_next = head_h + dh;
-    head_w_next = head_w + dw;
-    if (head_h_next < 0 || head_h_next >= Height || head_w_next < 0 || head_w_next >= Width) {
-        return false;
-    }
-    if (pGame->Map[head_h_next][head_w_next].Obj == ObjType::Wall) {
-        return false;
-    }
-    if (pGame->Map[head_h_next][head_w_next].SnakeIdx != EmptyIdx &&
-        pGame->Map[head_h_next][head_w_next].SnakeIdx != SnakeIdx) {
-        return false;
-    }
-    return true;
-}
+//
+//  Value System
+//
 
-typedef struct ValueMap {
-    double values[Height][Width];
-}* PValueMap;
-
-PValueMap CreateValueMap(PGame pGame) {
+Field<double> CreateValueMap(Game& game) {
     // Initialize value
-    PValueMap pMap = new ValueMap();
+    Field<double> Map;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
-            pMap->values[h][w] = 0;
-            if (pGame->Map[h][w].Obj == ObjType::ScoreOne) {
-                pMap->values[h][w] = ValueOfScoreOne;
+            Map[h][w] = 0;
+            if (game.Map[h][w].Obj == ObjType::ScoreOne) {
+                Map[h][w] = ValueOfScoreOne;
             }
-            if (pGame->Map[h][w].Obj == ObjType::ScoreTwo) {
-                pMap->values[h][w] = ValueOfScoreTwo;
+            if (game.Map[h][w].Obj == ObjType::ScoreTwo) {
+                Map[h][w] = ValueOfScoreTwo;
             }
-            if (pGame->Map[h][w].Obj == ObjType::ScoreThree) {
-                pMap->values[h][w] = ValueOfScoreThree;
+            if (game.Map[h][w].Obj == ObjType::ScoreThree) {
+                Map[h][w] = ValueOfScoreThree;
             }
-            if (pGame->Map[h][w].Obj == ObjType::ScoreFive) {
-                pMap->values[h][w] = ValueOfScoreFive;
+            if (game.Map[h][w].Obj == ObjType::ScoreFive) {
+                Map[h][w] = ValueOfScoreFive;
             }
-            if (pGame->Map[h][w].Obj == ObjType::Length) {
-                pMap->values[h][w] = valueOfLength;
+            if (game.Map[h][w].Obj == ObjType::Length) {
+                Map[h][w] = valueOfLength;
             }
         }
     }
 
     // Spread value
     for (int round = 0; round < ValueSpreadRounds; round++) {
-        PValueMap pMapNext = new ValueMap();
+        Field<double> MapNext;
         for (int h = 0; h < Height; h++) {
             for (int w = 0; w < Width; w++) {
-                pMapNext->values[h][w] = pMap->values[h][w];
+                MapNext[h][w] = Map[h][w];
                 for (int dh = -1; dh <= 1; dh += 2) {
                     for (int dw = -1; dw <= 1; dw += 2) {
                         int h_next = h + dh;
@@ -245,39 +299,42 @@ PValueMap CreateValueMap(PGame pGame) {
                         if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
                             continue;
                         }
-                        double new_value = pMap->values[h_next][w_next] * ValueSpreadDecline;
-                        if (new_value > pMapNext->values[h][w]) {
-                            pMapNext->values[h][w] = new_value;
+                        double new_value = Map[h_next][w_next] * ValueSpreadDecline;
+                        if (new_value > MapNext[h][w]) {
+                            MapNext[h][w] = new_value;
                         }
                     }
                 }
             }
         }
-        delete pMap;
-        pMap = pMapNext;
+        Map = std::move(MapNext);
     }
-    return pMap;
+    return Map;
 }
 
+//
+//  Main Logic
+//
+
 int main() {
-    PGame pGame = CreateGame();
-    PValueMap pValueMap = CreateValueMap(pGame);
+    Game game = Game();
+    Field<double> ValueMap = CreateValueMap(game);
     const Operation move_operations[] = {Operation::Left, Operation::Up, Operation::Right, Operation::Down};
     Operation best_operation = Operation::Shield;
     double best_value = 0;
     for (Operation operation : move_operations) {
-        if (!CanOperate(pGame, pGame->SelfIdx, operation)) {
+        if (!game.CanOperate(game.SelfIdx, operation)) {
             continue;
         }
         int dh, dw;
         dh = DhOfOperation(operation);
         dw = DwOfOperation(operation);
         int head_h, head_w, head_h_next, head_w_next;
-        head_h = pGame->SnakeInfos[pGame->SelfIdx].Body[0].h;
-        head_w = pGame->SnakeInfos[pGame->SelfIdx].Body[0].w;
+        head_h = game.SnakeInfos[game.SelfIdx].Body[0].h;
+        head_w = game.SnakeInfos[game.SelfIdx].Body[0].w;
         head_h_next = head_h + dh;
         head_w_next = head_w + dw;
-        double value = pValueMap->values[head_h_next][head_w_next];
+        double value = ValueMap[head_h_next][head_w_next];
         if (value > best_value) {
             best_value = value;
             best_operation = operation;

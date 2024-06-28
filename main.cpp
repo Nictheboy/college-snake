@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <list>
 #include <queue>
@@ -23,6 +25,7 @@ constexpr int CenterH = Height / 2;
 constexpr int CenterW = Width / 2;
 constexpr int RadiusOfMap = Height / 2 + Width / 2;
 
+constexpr double ValueSpreadDecline = 0.75;  // percentage
 constexpr double BaseValueOfScore = 200;
 constexpr double ValuePerScore = 50;
 constexpr double ValueOfLengthAtBegin = 250;
@@ -31,11 +34,22 @@ constexpr double ValueOfCenter = 500;
 
 constexpr double BaseDeclineOfCompetitivity = 0.10;
 constexpr double DeclinePerCompetitivity = 0.50;
-constexpr double ValueSpreadDecline = 0.75;  // percentage
+
+constexpr double ValueOfTrap = -1000;
+constexpr double ValueOfWall = -1e10;
+constexpr double ValueOfDeathPerRemainTime = -300;
+constexpr double ValueOfOpponentWhenHaveShield = -2000;
+
+constexpr double VerySmallValue = -1e20;
+constexpr double VeryLargeValue = 1e20;
 
 //
 //  Generic Field
 //
+
+struct Point {
+    int h, w;
+};
 
 template <typename T>
 class Field {
@@ -45,9 +59,13 @@ class Field {
    public:
     Field() {
         values = new T[Height * Width];
+    }
+
+    Field(T init_value) {
+        values = new T[Height * Width];
         for (int h = 0; h < Height; h++) {
             for (int w = 0; w < Width; w++) {
-                (*this)[h][w] = T();
+                (*this)[h][w] = init_value;
             }
         }
     }
@@ -140,6 +158,35 @@ class Field {
             }
         }
         return new_field;
+    }
+
+    Field<T> MinWith(const Field<T>& field) const {
+        Field<T> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = std::min((*this)[h][w], field[h][w]);
+            }
+        }
+        return new_field;
+    }
+
+    void DijkstrativeReduce(std::vector<std::pair<Point, T>> source,
+                            std::function<void(Point, std::function<void(Point, T)>)> reducer) {
+        std::queue<Point> queue;
+        for (auto& item : source) {
+            Point point = item.first;
+            T value = item.second;
+            queue.push(point);
+            (*this)[point.h][point.w] = value;
+        }
+        while (!queue.empty()) {
+            auto current = queue.front();
+            queue.pop();
+            reducer(current, [&](Point point, T new_value) {
+                (*this)[point.h][point.w] = new_value;
+                queue.push(point);
+            });
+        }
     }
 };
 
@@ -234,10 +281,6 @@ enum ObjType {
     Wall,
 };
 
-struct Point {
-    int h, w;
-};
-
 struct SnakeInfo {
     int Idx;
     bool Alive;
@@ -274,6 +317,9 @@ struct Game {
         for (int i = 0; i < obj_cnt; i++) {
             int h, w, type_idx;
             std::cin >> h >> w >> type_idx;
+            if (h < 0 || h >= Height || w < 0 || w >= Width) {
+                continue;
+            }
             ObjType type = None;
             switch (type_idx) {
                 case -4:
@@ -316,6 +362,14 @@ struct Game {
             for (int i = 0; i < length; i++) {
                 int h, w;
                 std::cin >> h >> w;
+                if (h < 0)
+                    h = 0;
+                if (h >= Height)
+                    h = Height - 1;
+                if (w < 0)
+                    w = 0;
+                if (w >= Width)
+                    w = Width - 1;
                 SnakeInfos[snake_idx].Body.push_back(Point{.h = h, .w = w});
                 Map[h][w].SnakeIdx = snake_idx;
             }
@@ -595,46 +649,125 @@ struct Game {
 //  Value System
 //
 
-Field<int> CreateDistanceField(Game& game, Point point) {
-    Field<int> DistanceField;
+Field<double> CreateDangerField(Game& game) {
+    // Danger Field
+    Field<double> DangerField(VeryLargeValue);
+    std::vector<std::pair<Point, double>> dijkstra_source;
+    bool i_have_shield = game.SnakeInfos[game.SelfIdx].ShieldET > 0;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
-            DistanceField[h][w] = -1;
+            switch (game.Map[h][w].Obj) {
+                case Trap:
+                    dijkstra_source.push_back({
+                        {h, w},
+                        ValueOfTrap,
+                    });
+                    break;
+
+                case Wall:
+                    dijkstra_source.push_back({
+                        {h, w},
+                        ValueOfDeathPerRemainTime * game.TimeRemain,
+                    });
+                    break;
+
+                default:
+                    if (game.Map[h][w].SnakeIdx != EmptyIdx) {
+                        SnakeInfo& snake = game.SnakeInfos[game.Map[h][w].SnakeIdx];
+                        if (snake.Idx == game.SelfIdx) {
+                            continue;
+                        }
+                        if (i_have_shield) {
+                            dijkstra_source.push_back({
+                                {h, w},
+                                ValueOfOpponentWhenHaveShield,
+                            });
+                        } else {
+                            dijkstra_source.push_back({
+                                {h, w},
+                                ValueOfDeathPerRemainTime * game.TimeRemain,
+                            });
+                        }
+                    }
+                    break;
+            }
         }
     }
-    DistanceField[point.h][point.w] = 0;
-    std::queue<Point> queue;
-    queue.push(point);
-    while (!queue.empty()) {
-        Point current = queue.front();
-        queue.pop();
+    DangerField.DijkstrativeReduce(dijkstra_source, [&](Point p, auto updater) {
+        int h = p.h;
+        int w = p.w;
         for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
-            int h_next = current.h + DhOfOperation(direction);
-            int w_next = current.w + DwOfOperation(direction);
+            const int h_next = h + DhOfOperation(direction);
+            const int w_next = w + DwOfOperation(direction);
             if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
                 continue;
             }
-            if (game.Map[h_next][w_next].Obj == Wall ||
-                game.Map[h_next][w_next].Obj == Trap ||
-                game.Map[h_next][w_next].SnakeIdx != EmptyIdx) {
-                continue;
+            const int h_next_left = h_next + DhOfOperation(Operation::Left);
+            const int w_next_left = w_next + DwOfOperation(Operation::Left);
+            const int h_next_right = h_next + DhOfOperation(Operation::Right);
+            const int w_next_right = w_next + DwOfOperation(Operation::Right);
+            const int h_next_up = h_next + DhOfOperation(Operation::Up);
+            const int w_next_up = w_next + DwOfOperation(Operation::Up);
+            const int h_next_down = h_next + DhOfOperation(Operation::Down);
+            const int w_next_down = w_next + DwOfOperation(Operation::Down);
+            const double danger_left = (h_next_left < 0 || h_next_left >= Height || w_next_left < 0 || w_next_left >= Width)
+                                           ? ValueOfDeathPerRemainTime * game.TimeRemain
+                                           : DangerField[h_next_left][w_next_left];
+            const double danger_right = (h_next_right < 0 || h_next_right >= Height || w_next_right < 0 || w_next_right >= Width)
+                                            ? ValueOfDeathPerRemainTime * game.TimeRemain
+                                            : DangerField[h_next_right][w_next_right];
+            const double danger_up = (h_next_up < 0 || h_next_up >= Height || w_next_up < 0 || w_next_up >= Width)
+                                         ? ValueOfDeathPerRemainTime * game.TimeRemain
+                                         : DangerField[h_next_up][w_next_up];
+            const double danger_down = (h_next_down < 0 || h_next_down >= Height || w_next_down < 0 || w_next_down >= Width)
+                                           ? ValueOfDeathPerRemainTime * game.TimeRemain
+                                           : DangerField[h_next_down][w_next_down];
+            const double danger = std::min({
+                std::max({danger_left, danger_right, danger_up}),
+                std::max({danger_left, danger_right, danger_down}),
+                std::max({danger_left, danger_up, danger_down}),
+                std::max({danger_right, danger_up, danger_down}),
+            });
+            if (danger < DangerField[h_next][w_next]) {
+                // printf("(%d, %d): %lf, ", h_next, w_next, danger);
+                updater({h_next, w_next}, danger);
             }
-            if (DistanceField[h_next][w_next] != -1) {
-                continue;
-            }
-            DistanceField[h_next][w_next] = DistanceField[current.h][current.w] + 1;
-            queue.push(Point{.h = h_next, .w = w_next});
         }
-    }
+    });
+    return DangerField;
+}
+
+Field<int> CreateDistanceField(Game& game, Point point) {
+    Field<int> DistanceField(-1);
+    DistanceField.DijkstrativeReduce(
+        {{point, 0}}, [&](Point p, auto updater) {
+            int h = p.h;
+            int w = p.w;
+            for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+                int h_next = h + DhOfOperation(direction);
+                int w_next = w + DwOfOperation(direction);
+                if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
+                    continue;
+                }
+                if (game.Map[h_next][w_next].Obj == Wall) {
+                    continue;
+                }
+                if (game.Map[h_next][w_next].SnakeIdx != EmptyIdx && game.Map[h_next][w_next].SnakeIdx != game.SelfIdx) {
+                    continue;
+                }
+                if (DistanceField[h_next][w_next] != -1) {
+                    continue;
+                }
+                updater({h_next, w_next}, DistanceField[h][w] + 1);
+            }
+        });
     return DistanceField;
 }
 
-Field<double> CreateValueField(Game& game) {
+Field<double> CreateObjectValueField(Game& game) {
     const int my_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
     const int my_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
-
-    // Value of Objects
-    Field<double> ValueField;
+    Field<double> ObjectValueField(0);
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             double spreadable_value = 0;
@@ -646,7 +779,7 @@ Field<double> CreateValueField(Game& game) {
                 spreadable_value = ValueOfLengthAtBegin * (double)game.TimeRemain / TotalTime + ValueOfLengthAtEnd * (1 - (double)game.TimeRemain / TotalTime);
             }
             if (cell.Obj == Trap) {
-                ValueField[h][w] -= ScorePanaltyOfTrap;
+                ObjectValueField[h][w] += ValueOfTrap;
             }
             if (spreadable_value != 0) {
                 Field<int> DistanceField = CreateDistanceField(game, Point{.h = h, .w = w});
@@ -665,22 +798,30 @@ Field<double> CreateValueField(Game& game) {
                     }
                     return spreadable_value * std::pow(ValueSpreadDecline, distance);
                 });
-                ValueField = ValueField.MaxWith(ObjValueField);
+                ObjectValueField = ObjectValueField.MaxWith(ObjValueField);
             }
         }
     }
+    return ObjectValueField;
+}
 
-    // Value of Center
+Field<double> CreateCenterValueField(int time_remain) {
     Field<double> CenterValueField;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             int radius = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
-            int radius_of_center = std::max(100, 13 + (Width + Height) / 4 - (int)std::round(game.TimeRemain * 1.5));
+            int radius_of_center = std::max(100, 13 + (Width + Height) / 4 - (int)std::round(time_remain * 1.5));
             CenterValueField[h][w] = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
         }
     }
-    ValueField = ValueField + CenterValueField;
-    return ValueField;
+    return CenterValueField;
+}
+
+Field<double> CreateValueField(Game& game) {
+    Field<double> DangerField = CreateDangerField(game);
+    Field<double> ObjectValueField = CreateObjectValueField(game);
+    Field<double> CenterValueField = CreateCenterValueField(game.TimeRemain);
+    return (ObjectValueField + CenterValueField).MinWith(DangerField);
 }
 
 //
@@ -688,11 +829,12 @@ Field<double> CreateValueField(Game& game) {
 //
 
 int main() {
+    auto start_time = std::chrono::high_resolution_clock::now();
     Game game = Game();
     Field<double> ValueMap = CreateValueField(game);
     const Operation move_operations[] = {Operation::Left, Operation::Up, Operation::Right, Operation::Down};
     Operation best_operation = Operation::Shield;
-    double best_value = 0;
+    double best_value = VerySmallValue;
     for (Operation operation : move_operations) {
         if (!game.CanOperate(game.SelfIdx, operation)) {
             continue;
@@ -711,5 +853,8 @@ int main() {
             best_operation = operation;
         }
     }
-    std::cout << best_operation;
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::cout << best_operation << " "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms"
+              << std::endl;
 }

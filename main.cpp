@@ -30,15 +30,16 @@ constexpr int CenterW = Width / 2;
 constexpr int RadiusOfMap = Height / 2 + Width / 2;
 
 constexpr double ValueSpreadDecline = 0.75;  // percentage
-constexpr double BaseValueOfScore = 200;
-constexpr double ValuePerScore = 50;
-constexpr double ValueOfLengthAtBegin = 700;
+constexpr double BaseValueOfScore = 0;
+constexpr double ValuePerScore = 100;
+constexpr double ValueOfLengthAtBegin = 500;
 constexpr double ValueOfLengthAtEnd = 0;
-constexpr double ValueOfCenter = 500;
-constexpr int CenterValueTickAdvanceOffset = 200;
+constexpr double ValueOfCenter = 2000;
+constexpr int TickCenterValueBegin = 50;
 
-constexpr double BaseDeclineOfCompetitivity = 0.10;
+constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
+constexpr double CorrectionForSpreadableFields = 0.15;
 
 constexpr double ValueOfTrap = -1000;
 constexpr double ValueOfWall = -1e10;
@@ -181,6 +182,17 @@ class Field {
         return new_field;
     }
 
+    Field<T> Standardlize(T standard) {
+        T sum = 0;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                sum += (*this)[h][w];
+            }
+        }
+        T avg = sum / (Height * Width);
+        return (*this) * (standard / avg);
+    }
+
     void DijkstrativeReduce(std::vector<std::pair<Point, T>> source,
                             std::function<void(Point, std::function<void(Point, T)>)> reducer) {
         std::queue<Point> queue;
@@ -203,10 +215,15 @@ class Field {
     void PrintValuesNearby(Point point, int radius) const {
         for (int h = point.h - radius; h <= point.h + radius; h++) {
             for (int w = point.w - radius; w <= point.w + radius; w++) {
-                if (h < 0 || h >= Height || w < 0 || w >= Width) {
-                    std::cerr << "X";
+                if (h == point.h && w == point.w) {
+                    std::cerr << "[";
                 } else {
-                    std::cerr << (*this)[h][w];
+                    std::cerr << " ";
+                }
+                if (h < 0 || h >= Height || w < 0 || w >= Width) {
+                    fprintf(stderr, "   X  ");
+                } else {
+                    fprintf(stderr, "%6.1g", (*this)[h][w]);
                 }
                 if (h == point.h && w == point.w) {
                     std::cerr << "]";
@@ -448,6 +465,11 @@ struct Game {
     void PrintMapNearby(Point point, int radius) const {
         for (int h = point.h - radius; h <= point.h + radius; h++) {
             for (int w = point.w - radius; w <= point.w + radius; w++) {
+                if (h == point.h && w == point.w) {
+                    std::cerr << "[";
+                } else {
+                    std::cerr << " ";
+                }
                 if (h < 0 || h >= Height || w < 0 || w >= Width) {
                     std::cerr << "X";
                 } else {
@@ -826,7 +848,8 @@ Field<int> CreateDistanceField(Game& game, Point point) {
                 if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
                     continue;
                 }
-                if (game.Map[h_next][w_next].Obj == Wall) {
+                if (game.Map[h_next][w_next].Obj == Wall ||
+                    game.Map[h_next][w_next].Obj == Trap) {
                     continue;
                 }
                 if (game.Map[h_next][w_next].SnakeIdx != EmptyIdx && game.Map[h_next][w_next].SnakeIdx != game.SelfIdx) {
@@ -841,41 +864,66 @@ Field<int> CreateDistanceField(Game& game, Point point) {
     return DistanceField;
 }
 
-Field<double> CreateObjectValueField(Game& game) {
+Field<double> CreateSpreadableField(Game& game, Point point, double spreadable_value, double spread_decline) {
+    return CreateDistanceField(game, point).Map([spreadable_value, spread_decline](int distance) {
+        if (distance == -1) {
+            return 0.0;
+        }
+        return spreadable_value * std::pow(spread_decline, distance);
+    });
+}
+
+Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerField) {
     const int my_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
     const int my_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
-    Field<double> ObjectValueField(0);
+    std::vector<Field<double>> RawObjectFields;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             double spreadable_value = 0;
             Cell cell = game.Map[h][w];
+            if (DangerField[h][w] < 0)
+                continue;
             if (cell.Obj > ScoreZero && cell.Obj < ScoreTooLarge) {
                 spreadable_value = BaseValueOfScore + ValuePerScore * (cell.Obj - ScoreZero);
             }
             if (cell.Obj == Length) {
                 spreadable_value = ValueOfLengthAtBegin * (double)game.TimeRemain / TotalTime + ValueOfLengthAtEnd * (1 - (double)game.TimeRemain / TotalTime);
             }
+            if (spreadable_value != 0) {
+                RawObjectFields.push_back(CreateSpreadableField(game, {.h = h, .w = w}, spreadable_value, ValueSpreadDecline));
+            }
+        }
+    }
+
+    Field<double> SumField(0);
+    for (auto& Field : RawObjectFields) {
+        SumField = SumField + Field;
+    }
+    Field<double> StandardlizedSumField = SumField.Standardlize(1.0);
+
+    Field<double> ObjectValueField(0);
+    for (auto& Field : RawObjectFields) {
+        double field_weight = 1.0;
+        double field_value_at_my_pos = Field[my_h][my_w];
+        field_weight *= field_value_at_my_pos / (SumField[my_h][my_w] / RawObjectFields.size());
+        field_weight *= StandardlizedSumField[my_h][my_w];
+        for (SnakeInfo& snake : game.SnakeInfos) {
+            if (!snake.Alive || snake.Idx == game.SelfIdx) {
+                continue;
+            }
+            double field_value_at_opponent_pos = Field[snake.Body.front().h][snake.Body.front().w];
+            if (field_value_at_opponent_pos >= field_value_at_my_pos) {
+                field_weight *= BaseDeclineOfCompetitivity * (field_value_at_my_pos / field_value_at_opponent_pos);
+            }
+        }
+        ObjectValueField = ObjectValueField.MaxWith(Field * field_weight);
+    }
+    ObjectValueField = ObjectValueField * CorrectionForSpreadableFields;
+    for (int h = 0; h < Height; h++) {
+        for (int w = 0; w < Width; w++) {
+            Cell cell = game.Map[h][w];
             if (cell.Obj == Trap) {
                 ObjectValueField[h][w] += ValueOfTrap;
-            }
-            if (spreadable_value != 0) {
-                Field<int> DistanceField = CreateDistanceField(game, Point{.h = h, .w = w});
-                for (SnakeInfo& snake : game.SnakeInfos) {
-                    if (!snake.Alive || snake.Idx == game.SelfIdx) {
-                        continue;
-                    }
-                    int competitivity = DistanceField[snake.Body.front().h][snake.Body.front().w] <= DistanceField[my_h][my_w];
-                    if (competitivity >= 0) {
-                        spreadable_value *= BaseDeclineOfCompetitivity * std::pow(DeclinePerCompetitivity, competitivity);
-                    }
-                }
-                Field<double> ObjValueField = DistanceField.Map([spreadable_value](int distance) {
-                    if (distance == -1) {
-                        return 0.0;
-                    }
-                    return spreadable_value * std::pow(ValueSpreadDecline, distance);
-                });
-                ObjectValueField = ObjectValueField.MaxWith(ObjValueField);
             }
         }
     }
@@ -885,10 +933,7 @@ Field<double> CreateObjectValueField(Game& game) {
 Field<double> CreateCenterValueField(Game& game) {
     Field<double> CenterValueField;
     Field<int> DistanceField = CreateDistanceField(game, {.h = CenterH, .w = CenterW});
-    const int radius_of_center = std::round(
-        std::max(
-            5,
-            (Width + Height) / 4 - (int)std::round((TotalTime - game.TimeRemain + CenterValueTickAdvanceOffset) * 1.5 / 20)));
+    const int radius_of_center = 5;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             int radius = DistanceField[h][w];
@@ -901,23 +946,21 @@ Field<double> CreateCenterValueField(Game& game) {
 
 Field<double> CreateValueField(Game& game) {
     Field<double> DangerField = CreateDangerField(game);
-    Field<double> ObjectValueField = CreateObjectValueField(game);
-    Field<double> CenterValueField = CreateCenterValueField(game);
+    Field<double> ObjectValueField = CreateObjectValueField(game, DangerField);
+    Field<double> CenterValueField = (TotalTime - game.TimeRemain) >= TickCenterValueBegin ? CreateCenterValueField(game) : Field<double>(0);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
 
-    if (enable_debug) {
-        std::cerr.precision(2);
-        std::cerr << "Danger Field:" << std::endl;
-        DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-        std::cerr << "Object Value Field:" << std::endl;
-        ObjectValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-        std::cerr << "Center Value Field:" << std::endl;
-        CenterValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-        std::cerr << "Value Field:" << std::endl;
-        ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-        std::cerr << "Map:" << std::endl;
-        game.PrintMapNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 20);
-    }
+    std::cerr.precision(2);
+    std::cerr << "Danger Field:" << std::endl;
+    DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    std::cerr << "Object Value Field:" << std::endl;
+    ObjectValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    std::cerr << "Center Value Field:" << std::endl;
+    CenterValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    std::cerr << "Value Field:" << std::endl;
+    ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    std::cerr << "Map:" << std::endl;
+    game.PrintMapNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 10);
 
     return ValueField;
 }
@@ -1056,6 +1099,7 @@ int main() {
     auto start_time = std::chrono::high_resolution_clock::now();
     auto should_finish_before = start_time + std::chrono::milliseconds(ExecutionMillisecondLimit);
     bool exceed_time_limit = false;
+    std::ios::sync_with_stdio(false);
 
     Game game = Game();
 

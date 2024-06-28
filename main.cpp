@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <list>
+#include <queue>
 #include <stack>
 #include <vector>
 
@@ -9,6 +11,7 @@ constexpr int Width = 40;
 constexpr int EmptyIdx = -1;
 constexpr int SelfName = 2023202296;
 
+constexpr int TotalTime = 256;
 constexpr int ShieldCost = 20;
 constexpr int ShieldCD = 30;
 constexpr int ShieldET = 5;
@@ -16,11 +19,18 @@ constexpr int ScorePerLength = 20;
 constexpr int LengthOfLengthBean = 2;
 constexpr int ScorePanaltyOfTrap = 10;
 
-constexpr double ValueBaseOfScore = 200;
-constexpr double ValuePerScore = 50;
-constexpr double ValueOfLength = 100;
+constexpr int CenterH = Height / 2;
+constexpr int CenterW = Width / 2;
+constexpr int RadiusOfMap = Height / 2 + Width / 2;
 
-constexpr int ValueSpreadRounds = 70;
+constexpr double BaseValueOfScore = 200;
+constexpr double ValuePerScore = 50;
+constexpr double ValueOfLengthAtBegin = 250;
+constexpr double ValueOfLengthAtEnd = 250;
+constexpr double ValueOfCenter = 500;
+
+constexpr double BaseDeclineOfCompetitivity = 0.10;
+constexpr double DeclinePerCompetitivity = 0.50;
 constexpr double ValueSpreadDecline = 0.75;  // percentage
 
 //
@@ -64,11 +74,69 @@ class Field {
         return values + h * Width;
     }
 
+    const T* operator[](int h) const {
+        return values + h * Width;
+    }
+
     Field<T> Clone() const {
         Field<T> new_field;
         for (int h = 0; h < Height; h++) {
             for (int w = 0; w < Width; w++) {
                 new_field[h][w] = (*this)[h][w];
+            }
+        }
+        return new_field;
+    }
+
+    template <typename U>
+    auto operator+(const Field<U>& field) const {
+        Field<decltype(T() + U())> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = (*this)[h][w] + field[h][w];
+            }
+        }
+        return new_field;
+    }
+
+    template <typename U>
+    auto operator-(const Field<U>& field) const {
+        Field<decltype(T() - U())> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = (*this)[h][w] - field[h][w];
+            }
+        }
+        return new_field;
+    }
+
+    template <typename U>
+    auto operator*(U scalar) const {
+        Field<decltype(U() * T())> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = (*this)[h][w] * scalar;
+            }
+        }
+        return new_field;
+    }
+
+    template <typename F>
+    auto Map(F f) const {
+        Field<decltype(f(T()))> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = f((*this)[h][w]);
+            }
+        }
+        return new_field;
+    }
+
+    Field<T> MaxWith(const Field<T>& field) const {
+        Field<T> new_field;
+        for (int h = 0; h < Height; h++) {
+            for (int w = 0; w < Width; w++) {
+                new_field[h][w] = std::max((*this)[h][w], field[h][w]);
             }
         }
         return new_field;
@@ -218,7 +286,7 @@ struct Game {
                     type = Length;
                     break;
                 default:
-                    if (type > ScoreZero && type < ScoreTooLarge) {
+                    if (type_idx >= 1 && type_idx <= 20) {
                         type = (ObjType)(ScoreZero + type_idx);
                     }
                     break;
@@ -527,45 +595,92 @@ struct Game {
 //  Value System
 //
 
-Field<double> CreateValueMap(Game& game) {
-    // Initialize value
-    Field<double> Map;
+Field<int> CreateDistanceField(Game& game, Point point) {
+    Field<int> DistanceField;
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
-            Map[h][w] = 0;
-            if (game.Map[h][w].Obj > ScoreZero && game.Map[h][w].Obj < ScoreTooLarge) {
-                Map[h][w] = ValuePerScore * (game.Map[h][w].Obj - ScoreZero) + ValueBaseOfScore;
+            DistanceField[h][w] = -1;
+        }
+    }
+    DistanceField[point.h][point.w] = 0;
+    std::queue<Point> queue;
+    queue.push(point);
+    while (!queue.empty()) {
+        Point current = queue.front();
+        queue.pop();
+        for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+            int h_next = current.h + DhOfOperation(direction);
+            int w_next = current.w + DwOfOperation(direction);
+            if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
+                continue;
             }
-            if (game.Map[h][w].Obj == Length) {
-                Map[h][w] = ValueOfLength;
+            if (game.Map[h_next][w_next].Obj == Wall ||
+                game.Map[h_next][w_next].Obj == Trap ||
+                game.Map[h_next][w_next].SnakeIdx != EmptyIdx) {
+                continue;
+            }
+            if (DistanceField[h_next][w_next] != -1) {
+                continue;
+            }
+            DistanceField[h_next][w_next] = DistanceField[current.h][current.w] + 1;
+            queue.push(Point{.h = h_next, .w = w_next});
+        }
+    }
+    return DistanceField;
+}
+
+Field<double> CreateValueField(Game& game) {
+    const int my_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
+    const int my_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
+
+    // Value of Objects
+    Field<double> ValueField;
+    for (int h = 0; h < Height; h++) {
+        for (int w = 0; w < Width; w++) {
+            double spreadable_value = 0;
+            Cell cell = game.Map[h][w];
+            if (cell.Obj > ScoreZero && cell.Obj < ScoreTooLarge) {
+                spreadable_value = BaseValueOfScore + ValuePerScore * (cell.Obj - ScoreZero);
+            }
+            if (cell.Obj == Length) {
+                spreadable_value = ValueOfLengthAtBegin * (double)game.TimeRemain / TotalTime + ValueOfLengthAtEnd * (1 - (double)game.TimeRemain / TotalTime);
+            }
+            if (cell.Obj == Trap) {
+                ValueField[h][w] -= ScorePanaltyOfTrap;
+            }
+            if (spreadable_value != 0) {
+                Field<int> DistanceField = CreateDistanceField(game, Point{.h = h, .w = w});
+                for (SnakeInfo& snake : game.SnakeInfos) {
+                    if (!snake.Alive || snake.Idx == game.SelfIdx) {
+                        continue;
+                    }
+                    int competitivity = DistanceField[snake.Body.front().h][snake.Body.front().w] <= DistanceField[my_h][my_w];
+                    if (competitivity >= 0) {
+                        spreadable_value *= BaseDeclineOfCompetitivity * std::pow(DeclinePerCompetitivity, competitivity);
+                    }
+                }
+                Field<double> ObjValueField = DistanceField.Map([spreadable_value](int distance) {
+                    if (distance == -1) {
+                        return 0.0;
+                    }
+                    return spreadable_value * std::pow(ValueSpreadDecline, distance);
+                });
+                ValueField = ValueField.MaxWith(ObjValueField);
             }
         }
     }
 
-    // Spread value
-    for (int round = 0; round < ValueSpreadRounds; round++) {
-        Field<double> MapNext;
-        for (int h = 0; h < Height; h++) {
-            for (int w = 0; w < Width; w++) {
-                MapNext[h][w] = Map[h][w];
-                for (int dh = -1; dh <= 1; dh += 2) {
-                    for (int dw = -1; dw <= 1; dw += 2) {
-                        int h_next = h + dh;
-                        int w_next = w + dw;
-                        if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
-                            continue;
-                        }
-                        double new_value = Map[h_next][w_next] * ValueSpreadDecline;
-                        if (new_value > MapNext[h][w]) {
-                            MapNext[h][w] = new_value;
-                        }
-                    }
-                }
-            }
+    // Value of Center
+    Field<double> CenterValueField;
+    for (int h = 0; h < Height; h++) {
+        for (int w = 0; w < Width; w++) {
+            int radius = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
+            int radius_of_center = std::max(100, 13 + (Width + Height) / 4 - (int)std::round(game.TimeRemain * 1.5));
+            CenterValueField[h][w] = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
         }
-        Map = std::move(MapNext);
     }
-    return Map;
+    ValueField = ValueField + CenterValueField;
+    return ValueField;
 }
 
 //
@@ -574,7 +689,7 @@ Field<double> CreateValueMap(Game& game) {
 
 int main() {
     Game game = Game();
-    Field<double> ValueMap = CreateValueMap(game);
+    Field<double> ValueMap = CreateValueField(game);
     const Operation move_operations[] = {Operation::Left, Operation::Up, Operation::Right, Operation::Down};
     Operation best_operation = Operation::Shield;
     double best_value = 0;
@@ -591,7 +706,7 @@ int main() {
         head_h_next = head_h + dh;
         head_w_next = head_w + dw;
         double value = ValueMap[head_h_next][head_w_next];
-        if (value > best_value) {
+        if (value >= best_value) {
             best_value = value;
             best_operation = operation;
         }

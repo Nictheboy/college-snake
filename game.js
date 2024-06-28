@@ -1,6 +1,3 @@
-// 来源：http://snake.ruc.rvalue.moe/static/javascripts/game.js
-// 该代码被放置在这里仅仅是作为一个参考，如有侵权请联系 nictheboy <nictheboy@outlook.com>
-
 var otherSnakeScore = new Array(); //得分
 var time = 0; //游戏时间
 var choice = new Array(); //每次游戏选择的学号数组
@@ -48,6 +45,7 @@ var boxX = new Array(); //尸体横坐标
 var boxY = new Array(); //尸体纵坐标
 var bonusValue = new Array(); //豆子种类
 var refresh_times = -1; //刷新次数记录，每10次刷新调用一次后台
+// var refresh_times = 0; //1.0
 var map = new Array(); //地图
 var error_student_id = new Array(); //出错学生的id
 var snake_colors = ["red", "darkorange", "gold", "teal", "steelblue",
@@ -182,22 +180,41 @@ function othersnake_move() {
 
 //通过判断蛇的方向增加蛇的长度
 function add_snake(snakeID) {
+    var finalX = Math.floor((otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20);
+    var finalY = Math.floor((otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20);
+    console.log(finalX)
+    console.log(finalY)
     // 末端向左，向右增加长度
     if (otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] == 0) {
-        if(Math.floor((otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 39){  // 右边出界向上下增长
-            if(Math.floor((otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 29){   // 下边也出界向上增长
+        if(finalX == 39){  // 右边出界向上下增长
+            if(finalY == 29){   // 下边也出界向上增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
             else{  // 向下增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
         }
+        // if((finalX == 39 && finalY == 29) || (map[(finalX + 1)  * 30 + finalY] == 2 && map[finalX  * 30 + finalY+1] == 2)){  // 右边出界向上下增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }else if((finalX == 39) || (map[(finalX + 1)  * 30 + finalY] == 2)){  // 向下增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }
         else{  // 向右增长
             otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
             otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
@@ -207,21 +224,35 @@ function add_snake(snakeID) {
     }
     // 末端向上，向下增加长度
     else if (otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] == 1) {
-        if(Math.floor((otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 29){  // 下边出界向左右增长
-            if(Math.floor((otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 39){   // 右边也出界向左增长
+        if(finalY == 29){  // 下边出界向左右增长
+            if(finalX == 39){   // 右边也出界向左增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
             else{  // 向右增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
-                // otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = 0;
             }
         }
+        // if((finalX == 39 && finalY == 29) || (map[(finalX + 1)  * 30 + finalY] == 2 && map[finalX  * 30 + finalY+1] == 2)){  // 下边出界向左右增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }else if(finalY == 29 || map[finalX  * 30 + finalY+1] == 2){  // 向右增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }
         else{  // 向下增长
             otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
             otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
@@ -231,20 +262,35 @@ function add_snake(snakeID) {
     }
     // 末端向右，向左增加长度
     else if (otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] == 2) {
-        if(Math.floor((otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 0){  // 左边出界向上下增长
-            if(Math.floor((otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 29){   // 下边也出界向上增长
+        if(finalX == 0){  // 左边出界向上下增长
+            if(finalY == 29){   // 下边也出界向上增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
             else{  // 向下增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
         }
+        // if((finalX == 0 && finalY == 29) || (map[(finalX - 1)  * 30 + finalY] == 2 && map[finalX  * 30 + finalY+1] == 2)){  // 左边出界向上下增长
+        //     otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
+        //     otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+        //     otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
+        //     otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
+        //     otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }else if((finalX == 0) || (map[(finalX - 1)  * 30 + finalY] == 2)){  // 向下增长
+        //     otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
+        //     otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+        //     otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
+        //     otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
+        //     otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }
         else{  // 向左增长
             otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
             otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
@@ -254,20 +300,35 @@ function add_snake(snakeID) {
     }
     // 末端向下，向上增加长度
     else {
-        if(Math.floor((otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 0){  // 上边出界向左右增长
-            if(Math.floor((otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 3) / 20) == 39){   // 右边也出界向左增长
+        if(finalY == 0){  // 上边出界向左右增长
+            if(finalX == 39){   // 右边也出界向左增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
             else{  // 向右增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+                otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
             }
         }
+        // if((finalX == 39 && finalY == 0) || (map[(finalX + 1)  * 30 + finalY] == 2 && map[finalX  * 30 + finalY-1] == 2)){  // 上边出界向左右增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }else if((finalY == 0) || (map[finalX  * 30 + finalY-1] == 2)){  // 向右增长
+        //         otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+        //         otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
+        //         otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
+        //         otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
+        // }
         else{  // 向上增长
             otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
             otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
@@ -449,7 +510,8 @@ function snake_die(idx, info, killer) {
         if (s_score <= 0) break;
         var s_x = Math.floor((otherSnakeX[idx][i] - 3) / 20);
         var s_y = Math.floor((otherSnakeY[idx][i] - 3) / 20);
-        if (map[s_x*30 + s_y] == 1) continue;
+        if (s_x < 0 || s_x >= 40 || s_y < 0 || s_y >= 30 ) continue;//1.0
+        if (map[s_x*30 + s_y] != 0) continue;
         // if (s_score >= 10) {
         //     add_box(s_x, s_y, 10);
         //     s_score -= 10;
@@ -535,9 +597,9 @@ function update_bonus() {
 
             // 确保生成的坐标在有效范围内
             var minX = Math.max(0, centerX - maxOffsetX);
-            var maxX = Math.min(width, centerX + maxOffsetX);
+            var maxX = Math.min(width-20, centerX + maxOffsetX);//1.0
             var minY = Math.max(0, centerY - maxOffsetY);
-            var maxY = Math.min(height, centerY + maxOffsetY);
+            var maxY = Math.min(height-20, centerY + maxOffsetY);//1.0
 
             while(true){
                 var x = Math.floor((minX + (Math.random() * (maxX - minX))) / 20) * 20;
@@ -665,7 +727,7 @@ function update_wall(flag){
         bonusX[i] = x;
         bonusY[i] = y;
         bonusValue[i] = 7;
-        map[(bonusX[i] - 13) / 20 * 30 + (bonusY[i] - 13) / 20] = 1;
+        map[(bonusX[i] - 13) / 20 * 30 + (bonusY[i] - 13) / 20] = 2;
         i++;
     }
     
@@ -1165,9 +1227,9 @@ async function draw() {
             colorstring += '</tr>';
         }
         $('#note').html(colorstring);
-
+        // console.log(refresh_times)
         //如果刷新了10次，向后台请求数据，由于格子大小为20，每次移动2，10次正好走满一格
-        if (refresh_times % 10 == 0) {
+        if (refresh_times % 10 == 0 ) {
             set_time();
             //只在整格点判断蛇是否相碰，否则可能由于一点点位置变化导致判断错误
             check_death();
@@ -1229,7 +1291,30 @@ async function draw() {
                                 //     otherSnakeShieldTimes[loc] = Math.max(50 + 10, otherSnakeShieldTimes[loc]);
                                 //     snakeStop[loc] = 10;
                                 // }
-                                if (otherSnakeShieldCDs[loc] == 0 && otherSnakeScore[loc] > SHIELD_COST) {
+                                if (otherSnakeShieldCDs[loc] == 0 && otherSnakeScore[loc] >= SHIELD_COST) {//1.0
+                                    // --otherSnakeShieldNums[loc];
+                                    otherSnakeShieldCDs[loc] = SHIELD_CD;
+                                    otherSnakeShieldTimes[loc] = Math.max(50 + 10, otherSnakeShieldTimes[loc]);
+                                    snakeStop[loc] = 10;
+                                    otherSnakeScore[loc] -= SHIELD_COST;
+                                }
+                            }
+                        }
+                    }else if (oplist.length >= 2){
+                        console.log(result.output)
+                        var dir = parseInt(oplist[0]);
+                        if (dir !== 0 && dir !== 1 && dir !== 2 && dir !== 3 && dir !== 4) {
+                            snake_die(loc, 'made an illegal operation');
+                        }
+                        else {
+                            otherSnakePreDirection[loc][0] = dir;
+                            if (dir == 4) {  // use shield
+                                // if (otherSnakeShieldNums[loc] > 0) {
+                                //     --otherSnakeShieldNums[loc];
+                                //     otherSnakeShieldTimes[loc] = Math.max(50 + 10, otherSnakeShieldTimes[loc]);
+                                //     snakeStop[loc] = 10;
+                                // }
+                                if (otherSnakeShieldCDs[loc] == 0 && otherSnakeScore[loc] >= SHIELD_COST) {//1.0
                                     // --otherSnakeShieldNums[loc];
                                     otherSnakeShieldCDs[loc] = SHIELD_CD;
                                     otherSnakeShieldTimes[loc] = Math.max(50 + 10, otherSnakeShieldTimes[loc]);

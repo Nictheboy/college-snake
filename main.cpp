@@ -9,6 +9,8 @@
 #include <valarray>
 #include <vector>
 
+constexpr bool enable_debug = false;
+
 constexpr int Height = 30;
 constexpr int Width = 40;
 constexpr int EmptyIdx = -1;
@@ -21,7 +23,7 @@ constexpr int ShieldET = 5;
 constexpr int ScorePerLength = 20;
 constexpr int LengthOfLengthBean = 2;
 constexpr int ScorePanaltyOfTrap = 10;
-constexpr int ExecutionMillisecondLimit = 200 * 0.9;
+constexpr int ExecutionMillisecondLimit = enable_debug ? INT32_MAX : 200 * 0.9;
 
 constexpr int CenterH = Height / 2;
 constexpr int CenterW = Width / 2;
@@ -30,9 +32,10 @@ constexpr int RadiusOfMap = Height / 2 + Width / 2;
 constexpr double ValueSpreadDecline = 0.75;  // percentage
 constexpr double BaseValueOfScore = 200;
 constexpr double ValuePerScore = 50;
-constexpr double ValueOfLengthAtBegin = 250;
-constexpr double ValueOfLengthAtEnd = 250;
+constexpr double ValueOfLengthAtBegin = 700;
+constexpr double ValueOfLengthAtEnd = 0;
 constexpr double ValueOfCenter = 500;
+constexpr int TickWhenValueOfCenterBegin = 100;
 
 constexpr double BaseDeclineOfCompetitivity = 0.10;
 constexpr double DeclinePerCompetitivity = 0.50;
@@ -48,7 +51,8 @@ constexpr double VeryLargeValue = 1e20;
 constexpr int DFSDepth = 2;
 constexpr double UtilityPerScore = 200;
 constexpr double UtilityPerValue = 1;
-constexpr double DeclinePerDepth = 1.0;  // 1.0 := no decline
+constexpr double UtilityOfShield = -4000;
+constexpr double DeclinePerDepth = 0.8;  // 1.0 := no decline
 
 //
 //  Generic Field
@@ -200,9 +204,14 @@ class Field {
         for (int h = point.h - radius; h <= point.h + radius; h++) {
             for (int w = point.w - radius; w <= point.w + radius; w++) {
                 if (h < 0 || h >= Height || w < 0 || w >= Width) {
-                    std::cerr << "X ";
+                    std::cerr << "X";
                 } else {
-                    std::cerr << (*this)[h][w] << " ";
+                    std::cerr << (*this)[h][w];
+                }
+                if (h == point.h && w == point.w) {
+                    std::cerr << "]";
+                } else {
+                    std::cerr << " ";
                 }
             }
             std::cerr << std::endl;
@@ -434,6 +443,46 @@ struct Game {
             return false;
         }
         return true;
+    }
+
+    void PrintMapNearby(Point point, int radius) const {
+        for (int h = point.h - radius; h <= point.h + radius; h++) {
+            for (int w = point.w - radius; w <= point.w + radius; w++) {
+                if (h < 0 || h >= Height || w < 0 || w >= Width) {
+                    std::cerr << "X";
+                } else {
+                    if (Map[h][w].SnakeIdx == EmptyIdx) {
+                        switch (Map[h][w].Obj) {
+                            case None:
+                                std::cerr << ".";
+                                break;
+                            case Length:
+                                std::cerr << "L";
+                                break;
+                            case Trap:
+                                std::cerr << "T";
+                                break;
+                            case Wall:
+                                std::cerr << "W";
+                                break;
+                            default:
+                                std::cerr << Map[h][w].Obj - ScoreZero;
+                                break;
+                        }
+                    } else if (Map[h][w].SnakeIdx == SelfIdx) {
+                        std::cerr << "S";
+                    } else {
+                        std::cerr << "O";
+                    }
+                }
+                if (h == point.h && w == point.w) {
+                    std::cerr << "]";
+                } else {
+                    std::cerr << " ";
+                }
+            }
+            std::cerr << std::endl;
+        }
     }
 
    private:
@@ -758,7 +807,6 @@ Field<double> CreateDangerField(Game& game) {
                 std::max({danger_right, danger_up, danger_down}),
             });
             if (danger < DangerField[h_next][w_next]) {
-                // printf("(%d, %d): %lf, ", h_next, w_next, danger);
                 updater({h_next, w_next}, danger);
             }
         }
@@ -834,12 +882,13 @@ Field<double> CreateObjectValueField(Game& game) {
     return ObjectValueField;
 }
 
-Field<double> CreateCenterValueField(int time_remain) {
+Field<double> CreateCenterValueField(Game& game) {
     Field<double> CenterValueField;
+    Field<int> DistanceField = CreateDistanceField(game, {.h = CenterH, .w = CenterW});
+    const int radius_of_center = std::round(std::max(5, 13 + (Width + Height) / 4 - (int)std::round((TotalTime - game.TimeRemain) * 1.5)));
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
-            int radius = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
-            int radius_of_center = std::max(5, 13 + (Width + Height) / 4 - (int)std::round(time_remain * 1.5));
+            int radius = DistanceField[h][w];
             double value = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
             CenterValueField[h][w] = value;
         }
@@ -850,18 +899,24 @@ Field<double> CreateCenterValueField(int time_remain) {
 Field<double> CreateValueField(Game& game) {
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game);
-    Field<double> CenterValueField = CreateCenterValueField(game.TimeRemain);
+    Field<double> CenterValueField = (TotalTime - game.TimeRemain) >= TickWhenValueOfCenterBegin
+                                         ? CreateCenterValueField(game)
+                                         : Field<double>(0);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
 
-    // // Debug
-    // std::cerr << "Danger Field:" << std::endl;
-    // DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-    // std::cerr << "Object Value Field:" << std::endl;
-    // ObjectValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-    // std::cerr << "Center Value Field:" << std::endl;
-    // CenterValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
-    // std::cerr << "Value Field:" << std::endl;
-    // ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    if (enable_debug) {
+        std::cerr.precision(2);
+        std::cerr << "Danger Field:" << std::endl;
+        DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+        std::cerr << "Object Value Field:" << std::endl;
+        ObjectValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+        std::cerr << "Center Value Field:" << std::endl;
+        CenterValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+        std::cerr << "Value Field:" << std::endl;
+        ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+        std::cerr << "Map:" << std::endl;
+        game.PrintMapNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 20);
+    }
 
     return ValueField;
 }
@@ -956,22 +1011,28 @@ double UtilityOfMyMove(Game& game,
         }
         const int score_before = game.SnakeInfos[game.SelfIdx].Score;
         game.ImagineOperations(snake_operations, true);
+        Field<double> ValueFieldWithNewDangerField = ValueField.Clone();
+        Field<double> NewDangerField = CreateDangerField(game);
+        ValueFieldWithNewDangerField = ValueFieldWithNewDangerField.MinWith(NewDangerField);
 
         // evaluate
         double utility = 0;
         SnakeInfo& self = game.SnakeInfos[game.SelfIdx];
         utility += UtilityPerScore * (self.Score - score_before);
+        if (operation == Shield) {
+            utility += UtilityOfShield;
+        }
         if (!self.Alive) {
             utility += UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain;
         } else {
-            utility += UtilityPerValue * ValueField[my_h][my_w];
+            utility += UtilityPerValue * ValueFieldWithNewDangerField[my_h][my_w];
 
             // dfs
             if (depth > 0) {
                 std::valarray<double> utilities(AllOperationCount);
                 for (int i = 0; i < AllOperationCount; i++) {
                     if (game.CanOperate(game.SelfIdx, AllOperations[i]))
-                        utilities[i] = UtilityOfMyMove(game, AllOperations[i], ValueField, depth - 1, should_finish_before);
+                        utilities[i] = UtilityOfMyMove(game, AllOperations[i], ValueFieldWithNewDangerField, depth - 1, should_finish_before);
                     else
                         utilities[i] = VerySmallValue;
                 }

@@ -6,6 +6,7 @@
 #include <list>
 #include <queue>
 #include <stack>
+#include <valarray>
 #include <vector>
 
 constexpr int Height = 30;
@@ -20,6 +21,7 @@ constexpr int ShieldET = 5;
 constexpr int ScorePerLength = 20;
 constexpr int LengthOfLengthBean = 2;
 constexpr int ScorePanaltyOfTrap = 10;
+constexpr int ExecutionMillisecondLimit = 200 * 0.9;
 
 constexpr int CenterH = Height / 2;
 constexpr int CenterW = Width / 2;
@@ -42,6 +44,11 @@ constexpr double ValueOfOpponentWhenHaveShield = -2000;
 
 constexpr double VerySmallValue = -1e20;
 constexpr double VeryLargeValue = 1e20;
+
+constexpr int DFSDepth = 2;
+constexpr double UtilityPerScore = 200;
+constexpr double UtilityPerValue = 1;
+constexpr double DeclinePerDepth = 1.0;  // 1.0 := no decline
 
 //
 //  Generic Field
@@ -188,6 +195,19 @@ class Field {
             });
         }
     }
+
+    void PrintValuesNearby(Point point, int radius) const {
+        for (int h = point.h - radius; h <= point.h + radius; h++) {
+            for (int w = point.w - radius; w <= point.w + radius; w++) {
+                if (h < 0 || h >= Height || w < 0 || w >= Width) {
+                    std::cerr << "X ";
+                } else {
+                    std::cerr << (*this)[h][w] << " ";
+                }
+            }
+            std::cerr << std::endl;
+        }
+    }
 };
 
 //
@@ -195,12 +215,16 @@ class Field {
 //
 
 enum Operation {
+    Invalid = -1,
     Left = 0,
     Up = 1,
     Right = 2,
     Down = 3,
     Shield = 4,
 };
+
+constexpr Operation AllOperations[] = {Operation::Left, Operation::Up, Operation::Right, Operation::Down, Operation::Shield};
+constexpr int AllOperationCount = sizeof(AllOperations) / sizeof(Operation);
 
 struct SnakeIdxAndOperation {
     int Idx;
@@ -297,6 +321,8 @@ struct Cell {
     ObjType Obj;
 };
 
+class NoTimeRemainException : public std::exception {};
+
 struct Game {
     int TimeRemain;
     int SelfIdx;
@@ -386,6 +412,9 @@ struct Game {
         if (!SnakeInfos[SnakeIdx].Alive) {
             return false;
         }
+        if (TimeRemain < 0) {
+            return false;
+        }
         int dh, dw;
         dh = DhOfOperation(operation);
         dw = DwOfOperation(operation);
@@ -431,7 +460,7 @@ struct Game {
         const int tail_w = SnakeInfos[snake_idx].Body.back().w;
         const int pre_tail_h = (++SnakeInfos[snake_idx].Body.rbegin())->h;
         const int pre_tail_w = (++SnakeInfos[snake_idx].Body.rbegin())->w;
-        Operation direction;
+        Operation direction = Invalid;
         for (auto i : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
             if (pre_tail_h + DhOfOperation(i) == tail_h && pre_tail_w + DwOfOperation(i) == tail_w) {
                 direction = i;
@@ -513,7 +542,7 @@ struct Game {
         SnakeInfos[snake_idx].Body.clear();
     }
 
-    void ImagineOperations(std::vector<SnakeIdxAndOperation> operations, bool lucky_tail) {
+    void ImagineOperations(std::vector<SnakeIdxAndOperation> operations, bool lucky_tail_for_other_snake) {
         RevokeEntry r_entry;
         TimeRemain--;
         std::sort(operations.begin(), operations.end(), [](const SnakeIdxAndOperation& a, const SnakeIdxAndOperation& b) {
@@ -602,7 +631,7 @@ struct Game {
             }
             Map[head_h][head_w].Obj = None;
             lengthen += snake.Score / ScorePerLength - old_score / ScorePerLength;
-            lengthen = lucky_tail ? LengthOfLengthBean : lengthen;
+            lengthen = (lucky_tail_for_other_snake && snake.Idx != SelfIdx) ? LengthOfLengthBean : lengthen;
             if (lengthen-- > 0) {
                 ImagineTailLengthen(op.Idx, r_entry);
             }
@@ -810,8 +839,9 @@ Field<double> CreateCenterValueField(int time_remain) {
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             int radius = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
-            int radius_of_center = std::max(100, 13 + (Width + Height) / 4 - (int)std::round(time_remain * 1.5));
-            CenterValueField[h][w] = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
+            int radius_of_center = std::max(5, 13 + (Width + Height) / 4 - (int)std::round(time_remain * 1.5));
+            double value = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
+            CenterValueField[h][w] = value;
         }
     }
     return CenterValueField;
@@ -821,40 +851,207 @@ Field<double> CreateValueField(Game& game) {
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game);
     Field<double> CenterValueField = CreateCenterValueField(game.TimeRemain);
-    return (ObjectValueField + CenterValueField).MinWith(DangerField);
+    Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
+
+    // // Debug
+    // std::cerr << "Danger Field:" << std::endl;
+    // DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    // std::cerr << "Object Value Field:" << std::endl;
+    // ObjectValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    // std::cerr << "Center Value Field:" << std::endl;
+    // CenterValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+    // std::cerr << "Value Field:" << std::endl;
+    // ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+
+    return ValueField;
 }
 
 //
-//  Main Logic
+//  DFS Search
+//
+
+double UtilityOfMyMove(Game& game,
+                       Operation operation,
+                       const Field<double>& ValueField,
+                       int depth,
+                       std::chrono::system_clock::time_point should_finish_before) {
+    if (std::chrono::high_resolution_clock::now() > should_finish_before) {
+        throw NoTimeRemainException();
+    }
+
+    const int snake_cnt = game.SnakeInfos.size();
+    const int my_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
+    const int my_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
+
+    // find all snakes in gambling radius
+    const int GamblingRadius = 2 * depth;
+    std::vector<int> gambling_snake_idxs;
+    for (SnakeInfo& snake : game.SnakeInfos) {
+        if (!snake.Alive || snake.Idx == game.SelfIdx) {
+            continue;
+        }
+        const int distance = std::abs(snake.Body.front().h - my_h) + std::abs(snake.Body.front().w - my_w);
+        if (distance <= GamblingRadius) {
+            gambling_snake_idxs.push_back(snake.Idx);
+        }
+    }
+    const int gambling_snake_cnt = gambling_snake_idxs.size();
+
+    // enumerate all possible operations for gambling snakes, and use default operation for others
+    std::list<std::vector<Operation>> operation_collections;
+    if (gambling_snake_cnt == 0) {
+        // no need to enumerate
+        operation_collections.push_back(std::vector<Operation>(snake_cnt, Invalid));
+    } else {
+        std::vector<int> enumerate_stack(gambling_snake_cnt, 0);
+        while (true) {
+            // check if valid
+            bool is_valid = true;
+            for (int i = 0; i < gambling_snake_cnt; i++) {
+                if (game.SnakeInfos[gambling_snake_idxs[i]].LastOperation == Reverse(AllOperations[enumerate_stack[i]])) {
+                    is_valid = false;
+                    break;
+                }
+            }
+
+            // collect
+            if (is_valid) {
+                operation_collections.push_back(std::vector<Operation>(snake_cnt, Invalid));
+                std::vector<Operation>& operations = operation_collections.back();
+                for (int i = 0; i < gambling_snake_cnt; i++) {
+                    operations[gambling_snake_idxs[i]] = AllOperations[enumerate_stack[i]];
+                }
+            }
+
+            // next
+            int i = gambling_snake_cnt - 1;
+            while (i >= 0 && enumerate_stack[i] == AllOperationCount - 1) {
+                enumerate_stack[i] = 0;
+                i--;
+            }
+            if (i < 0) {
+                break;
+            }
+            enumerate_stack[i]++;
+        }
+    }
+    for (auto& item : operation_collections) {
+        for (int snake_idx = 0; snake_idx < snake_cnt; snake_idx++) {
+            if (snake_idx == game.SelfIdx) {
+                item[snake_idx] = operation;
+            } else {
+                if (item[snake_idx] == Invalid)
+                    item[snake_idx] = game.SnakeInfos[snake_idx].LastOperation;
+            }
+        }
+    }
+
+    // simulate
+    std::valarray<double> utility_for_each_case(operation_collections.size());
+    int case_idx = 0;
+    for (std::vector<Operation>& operations : operation_collections) {
+        std::vector<SnakeIdxAndOperation> snake_operations;
+        for (int snake_idx = 0; snake_idx < snake_cnt; snake_idx++) {
+            snake_operations.push_back({.Idx = snake_idx, .Op = operations[snake_idx]});
+        }
+        const int score_before = game.SnakeInfos[game.SelfIdx].Score;
+        game.ImagineOperations(snake_operations, true);
+
+        // evaluate
+        double utility = 0;
+        SnakeInfo& self = game.SnakeInfos[game.SelfIdx];
+        utility += UtilityPerScore * (self.Score - score_before);
+        if (!self.Alive) {
+            utility += UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain;
+        } else {
+            utility += UtilityPerValue * ValueField[my_h][my_w];
+
+            // dfs
+            if (depth > 0) {
+                std::valarray<double> utilities(AllOperationCount);
+                for (int i = 0; i < AllOperationCount; i++) {
+                    if (game.CanOperate(game.SelfIdx, AllOperations[i]))
+                        utilities[i] = UtilityOfMyMove(game, AllOperations[i], ValueField, depth - 1, should_finish_before);
+                    else
+                        utilities[i] = VerySmallValue;
+                }
+                utility += DeclinePerDepth * utilities.max();
+            }
+        }
+
+        utility_for_each_case[case_idx] = utility;
+        game.RevokeOperations();
+        case_idx++;
+    }
+    return utility_for_each_case.min();
+}
+
+//
+//  Main Function
 //
 
 int main() {
     auto start_time = std::chrono::high_resolution_clock::now();
+    auto should_finish_before = start_time + std::chrono::milliseconds(ExecutionMillisecondLimit);
+    bool exceed_time_limit = false;
+
     Game game = Game();
-    Field<double> ValueMap = CreateValueField(game);
-    const Operation move_operations[] = {Operation::Left, Operation::Up, Operation::Right, Operation::Down};
-    Operation best_operation = Operation::Shield;
-    double best_value = VerySmallValue;
-    for (Operation operation : move_operations) {
-        if (!game.CanOperate(game.SelfIdx, operation)) {
-            continue;
+
+    Field<double> ValueField = CreateValueField(game);
+    double best_utility = VerySmallValue;
+    std::vector<Operation> best_operations;
+    try {
+        for (Operation operation : AllOperations) {
+            if (!game.CanOperate(game.SelfIdx, operation)) {
+                continue;
+            }
+            double utility = UtilityOfMyMove(game, operation, ValueField, DFSDepth, should_finish_before);
+            if (utility > best_utility) {
+                best_utility = utility;
+                best_operations.clear();
+                best_operations.push_back(operation);
+            } else if (utility == best_utility) {
+                best_operations.push_back(operation);
+            }
         }
-        int dh, dw;
-        dh = DhOfOperation(operation);
-        dw = DwOfOperation(operation);
-        int head_h, head_w, head_h_next, head_w_next;
-        head_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
-        head_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
-        head_h_next = head_h + dh;
-        head_w_next = head_w + dw;
-        double value = ValueMap[head_h_next][head_w_next];
-        if (value >= best_value) {
-            best_value = value;
-            best_operation = operation;
+    } catch (NoTimeRemainException& e) {
+        exceed_time_limit = true;
+        best_operations.clear();
+        for (int i = 0; i < AllOperationCount; i++) {
+            best_operations.push_back(AllOperations[i]);
         }
     }
+
+    Operation best_operation = Shield;
+    if (best_operations.empty()) {
+        best_operation = Shield;
+    } else if (best_operations.size() == 1) {
+        best_operation = best_operations[0];
+    } else {
+        double best_value = VerySmallValue;
+        for (Operation operation : best_operations) {
+            if (!game.CanOperate(game.SelfIdx, operation)) {
+                continue;
+            }
+            int dh, dw;
+            dh = DhOfOperation(operation);
+            dw = DwOfOperation(operation);
+            int head_h, head_w, head_h_next, head_w_next;
+            head_h = game.SnakeInfos[game.SelfIdx].Body.front().h;
+            head_w = game.SnakeInfos[game.SelfIdx].Body.front().w;
+            head_h_next = head_h + dh;
+            head_w_next = head_w + dw;
+            double value = ValueField[head_h_next][head_w_next];
+            if (value >= best_value) {
+                best_value = value;
+                best_operation = operation;
+            }
+        }
+    }
+
     auto end_time = std::chrono::high_resolution_clock::now();
     std::cout << best_operation << " "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms"
+              << (exceed_time_limit ? " [T]" : "")
               << std::endl;
 }

@@ -35,7 +35,7 @@ constexpr double ValuePerScore = 50;
 constexpr double ValueOfLengthAtBegin = 700;
 constexpr double ValueOfLengthAtEnd = 0;
 constexpr double ValueOfCenter = 500;
-constexpr int TickWhenValueOfCenterBegin = 100;
+constexpr int CenterValueTickAdvanceOffset = 200;
 
 constexpr double BaseDeclineOfCompetitivity = 0.10;
 constexpr double DeclinePerCompetitivity = 0.50;
@@ -885,7 +885,10 @@ Field<double> CreateObjectValueField(Game& game) {
 Field<double> CreateCenterValueField(Game& game) {
     Field<double> CenterValueField;
     Field<int> DistanceField = CreateDistanceField(game, {.h = CenterH, .w = CenterW});
-    const int radius_of_center = std::round(std::max(5, 13 + (Width + Height) / 4 - (int)std::round((TotalTime - game.TimeRemain) * 1.5)));
+    const int radius_of_center = std::round(
+        std::max(
+            5,
+            (Width + Height) / 4 - (int)std::round((TotalTime - game.TimeRemain + CenterValueTickAdvanceOffset) * 1.5 / 20)));
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             int radius = DistanceField[h][w];
@@ -899,9 +902,7 @@ Field<double> CreateCenterValueField(Game& game) {
 Field<double> CreateValueField(Game& game) {
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game);
-    Field<double> CenterValueField = (TotalTime - game.TimeRemain) >= TickWhenValueOfCenterBegin
-                                         ? CreateCenterValueField(game)
-                                         : Field<double>(0);
+    Field<double> CenterValueField = CreateCenterValueField(game);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
 
     if (enable_debug) {

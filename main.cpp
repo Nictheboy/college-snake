@@ -27,33 +27,31 @@ constexpr int CenterH = Height / 2;
 constexpr int CenterW = Width / 2;
 constexpr int RadiusOfMap = Height / 2 + Width / 2;
 
-constexpr double ValueSpreadDecline = 0.75;  // percentage
 constexpr double BaseValueOfScore = 0;
-constexpr double ValuePerScore = 100;
+constexpr double ValuePerScore = 1;
 constexpr double ValueOfLengthAtBegin = 0;
 constexpr double ValueOfLengthAtEnd = 0;
-constexpr double ValueOfCenter = 3000;
+constexpr double ValueOfCenter = 20;
 constexpr double ValueOnlyInCenter = 0;
-constexpr int TickCenterValueBegin = 100;
-constexpr int TickCenterLockBegin = 256;
+constexpr int TickCenterValueBegin = 50;
 
 constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
 constexpr double CorrectionForSpreadableFields = 0.15;
 
-constexpr double ValueOfTrap = -1000;
-constexpr double ValueOfWall = -1e10;
-constexpr double ValueOfDeathPerRemainTime = -300;
-constexpr double ValueOfOpponentWhenHaveShield = -2000;
+constexpr double ValueOfTrap = -10;
+constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.3;
+constexpr double ValueOfDeathPerRemainTime = -10;
+constexpr double ValueOfOpponentWhenHaveShield = -20;
 
 constexpr double VerySmallValue = -1e20;
 constexpr double VeryLargeValue = 1e20;
 
-constexpr double UtilityPerScore = 200;
+constexpr double UtilityPerScore = 2;
 constexpr double UtilityPerValue = 1;
-constexpr double UtilityOfShield = -4000;
-constexpr double UtilityOfOpponentShield = 2000;
-constexpr double UtilityOfOpponentDeath = 4000;
+constexpr double UtilityOfShield = -100;
+constexpr double UtilityOfOpponentShield = 0;
+constexpr double UtilityOfOpponentDeath = 40;
 constexpr double DeclinePerDepth = 0.8;  // 1.0 := no decline
 
 //
@@ -224,7 +222,11 @@ class Field {
                 if (h < 0 || h >= Height || w < 0 || w >= Width) {
                     fprintf(stderr, "   X  ");
                 } else {
-                    fprintf(stderr, "%6.1g", (*this)[h][w]);
+                    double value = (*this)[h][w];
+                    if (std::abs(value) >= 10000)
+                        fprintf(stderr, "%-6.1g", value);
+                    else
+                        fprintf(stderr, "%-6.1f", value);
                 }
                 if (h == point.h && w == point.w) {
                     std::cerr << "]";
@@ -495,7 +497,11 @@ struct Game {
                     } else if (Map[h][w].SnakeIdx == SelfIdx) {
                         std::cerr << "S";
                     } else {
-                        std::cerr << "O";
+                        if (SnakeInfos[Map[h][w].SnakeIdx].Body.front().h == h && SnakeInfos[Map[h][w].SnakeIdx].Body.front().w == w) {
+                            std::cerr << "O";
+                        } else {
+                            std::cerr << "o";
+                        }
                     }
                 }
                 if (h == point.h && w == point.w) {
@@ -793,6 +799,27 @@ Field<double> CreateDangerField(Game& game) {
             }
         }
     }
+    for (int idx = 0; idx < (int)game.SnakeInfos.size(); idx++) {
+        if (!game.SnakeInfos[idx].Alive || idx == game.SelfIdx) {
+            continue;
+        }
+        const int head_h = game.SnakeInfos[idx].Body.front().h;
+        const int head_w = game.SnakeInfos[idx].Body.front().w;
+        for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+            if (direction == Reverse(game.SnakeInfos[idx].LastOperation)) {
+                continue;
+            }
+            const int h_next = head_h + DhOfOperation(direction);
+            const int w_next = head_w + DwOfOperation(direction);
+            if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
+                continue;
+            }
+            dijkstra_source.push_back({
+                {h_next, w_next},
+                ValueOfDeathPerRemainTime * game.TimeRemain * PenaltyDeclineOfHeadToHeadDeath,
+            });
+        }
+    }
     DangerField.DijkstrativeReduce(dijkstra_source, [&](Point p, auto updater) {
         int h = p.h;
         int w = p.w;
@@ -864,12 +891,12 @@ Field<int> CreateDistanceField(Game& game, Point point) {
     return DistanceField;
 }
 
-Field<double> CreateSpreadableField(Game& game, Point point, double spreadable_value, double spread_decline) {
-    return CreateDistanceField(game, point).Map([spreadable_value, spread_decline](int distance) {
+Field<double> CreateSpreadableField(Game& game, Point point, double spreadable_value) {
+    return CreateDistanceField(game, point).Map([spreadable_value](int distance) {
         if (distance == -1) {
             return 0.0;
         }
-        return spreadable_value * std::pow(spread_decline, distance);
+        return spreadable_value / (distance + 1);
     });
 }
 
@@ -890,7 +917,7 @@ Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerFiel
                 spreadable_value = ValueOfLengthAtBegin * (double)game.TimeRemain / TotalTime + ValueOfLengthAtEnd * (1 - (double)game.TimeRemain / TotalTime);
             }
             if (spreadable_value != 0) {
-                RawObjectFields.push_back(CreateSpreadableField(game, {.h = h, .w = w}, spreadable_value, ValueSpreadDecline));
+                RawObjectFields.push_back(CreateSpreadableField(game, {.h = h, .w = w}, spreadable_value));
             }
         }
     }
@@ -941,40 +968,25 @@ Field<double> CreateCenterValueField(Game& game) {
             CenterValueField[h][w] = value;
         }
     }
+    for (int h = 0; h < Height; h++) {
+        for (int w = 0; w < Width; w++) {
+            const int longer = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
+            const int shorter = std::min(std::abs(h - CenterH), std::abs(w - CenterW));
+            bool in_center = (longer <= 5 && shorter <= 2) || (longer <= 4 && shorter <= 4);
+            if (in_center) {
+                CenterValueField[h][w] = ValueOfCenter + ValueOnlyInCenter;
+            }
+        }
+    }
     return CenterValueField;
 }
 
 Field<double> CreateValueField(Game& game) {
-    const int h = game.SnakeInfos[game.SelfIdx].Body.front().h;
-    const int w = game.SnakeInfos[game.SelfIdx].Body.front().w;
-    const int longer = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
-    const int shorter = std::min(std::abs(h - CenterH), std::abs(w - CenterW));
-    bool in_center = (longer <= 5 && shorter <= 2) || (longer <= 4 && shorter <= 4);
-    const bool center_lock = (TotalTime - game.TimeRemain) >= TickCenterLockBegin;
-    if (center_lock) {
-        if (in_center) {
-            game.Map[CenterH - 5][CenterW].Obj = Wall;
-            game.Map[CenterH + 5][CenterW].Obj = Wall;
-            game.Map[CenterH][CenterW - 5].Obj = Wall;
-            game.Map[CenterH][CenterW + 5].Obj = Wall;
-        }
-    }
-
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game, DangerField);
-    Field<double> CenterValueField = (!in_center && (TotalTime - game.TimeRemain) >= TickCenterValueBegin) ? CreateCenterValueField(game) : Field<double>(0);
+    Field<double> CenterValueField = (TotalTime - game.TimeRemain >= TickCenterValueBegin) ? CreateCenterValueField(game) : Field<double>(0);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
 
-    if (center_lock) {
-        if (in_center) {
-            game.Map[CenterH - 5][CenterW].Obj = None;
-            game.Map[CenterH + 5][CenterW].Obj = None;
-            game.Map[CenterH][CenterW - 5].Obj = None;
-            game.Map[CenterH][CenterW + 5].Obj = None;
-        }
-    }
-
-    std::cerr.precision(2);
     std::cerr << "Danger Field:" << std::endl;
     DangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
     std::cerr << "Object Value Field:" << std::endl;
@@ -997,7 +1009,8 @@ double UtilityOfMyMove(Game& game,
                        Operation operation,
                        const Field<double>& ValueField,
                        int depth,
-                       std::chrono::system_clock::time_point should_finish_before) {
+                       std::chrono::system_clock::time_point should_finish_before,
+                       bool enable_debug = false) {
     if (std::chrono::high_resolution_clock::now() > should_finish_before) {
         throw NoTimeRemainException();
     }
@@ -1090,16 +1103,39 @@ double UtilityOfMyMove(Game& game,
         }
 
         // evaluate
-        double utility = 0;
         SnakeInfo& self = game.SnakeInfos[game.SelfIdx];
-        utility += UtilityPerScore * (self.Score - score_before);
-        if (operation == Shield) {
-            utility += UtilityOfShield;
-        }
+        const double score_utility = UtilityPerScore * (self.Score - score_before);
+        const double use_shield_utility = operation == Shield ? UtilityOfShield : 0;
+        double death_utility = 0, current_value_utility = 0, future_value_utility = 0,
+               opponent_shield_utility = 0, opponent_death_utility = 0, dfs_utility = 0;
         if (!self.Alive) {
-            utility += UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain;
+            // check head to head die
+            bool head_to_head_die = false;
+            for (int snake_idx : gambling_snake_idxs) {
+                if (game.SnakeInfos[snake_idx].Body.front().h == my_h && game.SnakeInfos[snake_idx].Body.front().w == my_w) {
+                    head_to_head_die = true;
+                    break;
+                }
+            }
+            death_utility = UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain * (head_to_head_die ? PenaltyDeclineOfHeadToHeadDeath : 1);
         } else {
-            utility += UtilityPerValue * ValueFieldWithNewDangerField[my_h][my_w];
+            // have not stepped into danger zone
+            current_value_utility = UtilityPerValue * ValueField[my_h][my_w];
+
+            // can step into a safe zone
+            double max_value = VerySmallValue;
+            for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+                if (direction == Reverse(operation)) {
+                    continue;
+                }
+                int h_next = my_h + DhOfOperation(direction);
+                int w_next = my_w + DwOfOperation(direction);
+                if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
+                    continue;
+                }
+                max_value = std::min(0.0, std::max(max_value, NewDangerField[h_next][w_next]));
+            }
+            future_value_utility = DeclinePerDepth * UtilityPerValue * max_value;
 
             // shield
             int gambling_shield_count_after = 0;
@@ -1108,12 +1144,12 @@ double UtilityOfMyMove(Game& game,
                     gambling_shield_count_after++;
                 }
             }
-            utility += UtilityOfShield * (gambling_shield_count_after - gambling_shield_count_before);
+            opponent_shield_utility = UtilityOfShield * (gambling_shield_count_after - gambling_shield_count_before);
 
             // kill
             for (int idx : gambling_snake_idxs) {
                 if (!game.SnakeInfos[idx].Alive && game.SnakeInfos[idx].Name != 2023202303) {
-                    utility += UtilityOfOpponentDeath;
+                    opponent_death_utility += UtilityOfOpponentDeath;
                 }
             }
 
@@ -1124,10 +1160,31 @@ double UtilityOfMyMove(Game& game,
                     if (game.CanOperate(game.SelfIdx, AllOperations[i]))
                         utilities[i] = UtilityOfMyMove(game, AllOperations[i], ValueFieldWithNewDangerField, depth - 1, should_finish_before);
                     else
-                        utilities[i] = VerySmallValue;
+                        utilities[i] = UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain;
                 }
-                utility += DeclinePerDepth * utilities.max();
+                dfs_utility = DeclinePerDepth * utilities.max();
             }
+        }
+
+        const double utility = score_utility + use_shield_utility + death_utility +
+                               current_value_utility + future_value_utility +
+                               opponent_shield_utility + opponent_death_utility + dfs_utility;
+
+        if (enable_debug) {
+            std::cerr << "Depth: " << depth << ", Case: " << case_idx << std::endl;
+            std::cerr << "Operation: " << operation << std::endl;
+            std::cerr << "Imagined Map:" << std::endl;
+            game.PrintMapNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 10);
+            std::cerr << "Previous Value Field:" << std::endl;
+            ValueField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+            std::cerr << "Current Value Field:" << std::endl;
+            ValueFieldWithNewDangerField.PrintValuesNearby(game.SnakeInfos[game.SelfIdx].Body.front(), 3);
+            std::cerr << "Utility: " << utility << std::endl;
+            std::cerr << " - Score Utility: " << score_utility << ", Use Shield Utility: " << use_shield_utility << ", Death Utility: " << death_utility << std::endl;
+            std::cerr << " - Current Value Utility: " << current_value_utility << ", Future Value Utility: " << future_value_utility << std::endl;
+            std::cerr << " - Opponent Shield Utility: " << opponent_shield_utility << ", Opponent Death Utility: " << opponent_death_utility << std::endl;
+            std::cerr << " - DFS Utility: " << dfs_utility << std::endl;
+            std::cerr << std::endl;
         }
 
         utility_for_each_case[case_idx] = utility;
@@ -1160,6 +1217,7 @@ int main() {
                     continue;
                 }
                 double utility = UtilityOfMyMove(game, operation, ValueField, depth, should_finish_before);
+                std::cerr << "Depth: " << depth << ", Operation: " << operation << ", Utility: " << utility << std::endl;
                 if (utility > best_utility) {
                     best_utility = utility;
                     best_operations_by_depth[depth].clear();
@@ -1172,11 +1230,13 @@ int main() {
         }
     } catch (NoTimeRemainException& e) {
         best_operations_by_depth.pop_back();
+        depth--;
     }
 
     std::vector<Operation> best_operations = best_operations_by_depth.size() > 0 ? best_operations_by_depth.back() : std::vector<Operation>();
     Operation best_operation = Shield;
     if (best_operations.empty()) {
+        std::cerr << "No operation available" << std::endl;
         best_operation = Shield;
     } else if (best_operations.size() == 1) {
         best_operation = best_operations[0];

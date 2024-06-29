@@ -9,8 +9,6 @@
 #include <valarray>
 #include <vector>
 
-constexpr bool enable_debug = false;
-
 constexpr int Height = 30;
 constexpr int Width = 40;
 constexpr int EmptyIdx = -1;
@@ -23,7 +21,7 @@ constexpr int ShieldET = 5;
 constexpr int ScorePerLength = 20;
 constexpr int LengthOfLengthBean = 2;
 constexpr int ScorePanaltyOfTrap = 10;
-constexpr int ExecutionMillisecondLimit = enable_debug ? INT32_MAX : 200 * 0.9;
+constexpr int ExecutionMillisecondLimit = 200 * 0.9;
 
 constexpr int CenterH = Height / 2;
 constexpr int CenterW = Width / 2;
@@ -34,7 +32,8 @@ constexpr double BaseValueOfScore = 0;
 constexpr double ValuePerScore = 100;
 constexpr double ValueOfLengthAtBegin = 500;
 constexpr double ValueOfLengthAtEnd = 0;
-constexpr double ValueOfCenter = 2000;
+constexpr double ValueOfCenter = 5000;
+constexpr double ValueOnlyInCenter = 0;
 constexpr int TickCenterValueBegin = 50;
 
 constexpr double BaseDeclineOfCompetitivity = 0.00;
@@ -49,10 +48,11 @@ constexpr double ValueOfOpponentWhenHaveShield = -2000;
 constexpr double VerySmallValue = -1e20;
 constexpr double VeryLargeValue = 1e20;
 
-constexpr int DFSDepth = 2;
 constexpr double UtilityPerScore = 200;
 constexpr double UtilityPerValue = 1;
 constexpr double UtilityOfShield = -4000;
+constexpr double UtilityOfOpponentShield = 2000;
+constexpr double UtilityOfOpponentDeath = 4000;
 constexpr double DeclinePerDepth = 0.8;  // 1.0 := no decline
 
 //
@@ -702,7 +702,7 @@ struct Game {
             }
             Map[head_h][head_w].Obj = None;
             lengthen += snake.Score / ScorePerLength - old_score / ScorePerLength;
-            lengthen = (lucky_tail_for_other_snake && snake.Idx != SelfIdx) ? LengthOfLengthBean : lengthen;
+            lengthen = (lucky_tail_for_other_snake && snake.Idx != SelfIdx && (TotalTime - TimeRemain) % 10 == 0) ? LengthOfLengthBean : lengthen;
             if (lengthen-- > 0) {
                 ImagineTailLengthen(op.Idx, r_entry);
             }
@@ -937,7 +937,7 @@ Field<double> CreateCenterValueField(Game& game) {
     for (int h = 0; h < Height; h++) {
         for (int w = 0; w < Width; w++) {
             int radius = DistanceField[h][w];
-            double value = ValueOfCenter * (radius <= radius_of_center ? 1.0 : ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap));
+            double value = radius <= radius_of_center ? (ValueOfCenter + ValueOnlyInCenter) : ValueOfCenter * ((double)radius - RadiusOfMap) / (radius_of_center - RadiusOfMap);
             CenterValueField[h][w] = value;
         }
     }
@@ -945,10 +945,29 @@ Field<double> CreateCenterValueField(Game& game) {
 }
 
 Field<double> CreateValueField(Game& game) {
+    const int h = game.SnakeInfos[game.SelfIdx].Body.front().h;
+    const int w = game.SnakeInfos[game.SelfIdx].Body.front().w;
+    const int longer = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
+    const int shorter = std::min(std::abs(h - CenterH), std::abs(w - CenterW));
+    bool in_center = (longer <= 5 && shorter <= 2) || (longer <= 4 && shorter <= 4);
+    if (in_center) {
+        game.Map[CenterH - 5][CenterW].Obj = Wall;
+        game.Map[CenterH + 5][CenterW].Obj = Wall;
+        game.Map[CenterH][CenterW - 5].Obj = Wall;
+        game.Map[CenterH][CenterW + 5].Obj = Wall;
+    }
+
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game, DangerField);
-    Field<double> CenterValueField = (TotalTime - game.TimeRemain) >= TickCenterValueBegin ? CreateCenterValueField(game) : Field<double>(0);
+    Field<double> CenterValueField = (!in_center && (TotalTime - game.TimeRemain) >= TickCenterValueBegin) ? CreateCenterValueField(game) : Field<double>(0);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
+
+    if (in_center) {
+        game.Map[CenterH - 5][CenterW].Obj = None;
+        game.Map[CenterH + 5][CenterW].Obj = None;
+        game.Map[CenterH][CenterW - 5].Obj = None;
+        game.Map[CenterH][CenterW + 5].Obj = None;
+    }
 
     std::cerr.precision(2);
     std::cerr << "Danger Field:" << std::endl;
@@ -1058,6 +1077,12 @@ double UtilityOfMyMove(Game& game,
         Field<double> ValueFieldWithNewDangerField = ValueField.Clone();
         Field<double> NewDangerField = CreateDangerField(game);
         ValueFieldWithNewDangerField = ValueFieldWithNewDangerField.MinWith(NewDangerField);
+        int gambling_shield_count_before = 0;
+        for (int snake_idx : gambling_snake_idxs) {
+            if (game.SnakeInfos[snake_idx].ShieldET > 1 && game.SnakeInfos[snake_idx].Name != 2023202303) {
+                gambling_shield_count_before++;
+            }
+        }
 
         // evaluate
         double utility = 0;
@@ -1070,6 +1095,22 @@ double UtilityOfMyMove(Game& game,
             utility += UtilityPerValue * ValueOfDeathPerRemainTime * game.TimeRemain;
         } else {
             utility += UtilityPerValue * ValueFieldWithNewDangerField[my_h][my_w];
+
+            // shield
+            int gambling_shield_count_after = 0;
+            for (int snake_idx : gambling_snake_idxs) {
+                if (game.SnakeInfos[snake_idx].ShieldET > 0 && game.SnakeInfos[snake_idx].Name != 2023202303) {
+                    gambling_shield_count_after++;
+                }
+            }
+            utility += UtilityOfShield * (gambling_shield_count_after - gambling_shield_count_before);
+
+            // kill
+            for (int idx : gambling_snake_idxs) {
+                if (!game.SnakeInfos[idx].Alive && game.SnakeInfos[idx].Name != 2023202303) {
+                    utility += UtilityOfOpponentDeath;
+                }
+            }
 
             // dfs
             if (depth > 0) {
@@ -1098,36 +1139,37 @@ double UtilityOfMyMove(Game& game,
 int main() {
     auto start_time = std::chrono::high_resolution_clock::now();
     auto should_finish_before = start_time + std::chrono::milliseconds(ExecutionMillisecondLimit);
-    bool exceed_time_limit = false;
     std::ios::sync_with_stdio(false);
 
     Game game = Game();
 
     Field<double> ValueField = CreateValueField(game);
-    double best_utility = VerySmallValue;
-    std::vector<Operation> best_operations;
+    std::vector<std::vector<Operation>> best_operations_by_depth;
+    int depth = 0;
     try {
-        for (Operation operation : AllOperations) {
-            if (!game.CanOperate(game.SelfIdx, operation)) {
-                continue;
+        while (depth <= game.TimeRemain) {
+            best_operations_by_depth.push_back(std::vector<Operation>());
+            double best_utility = VerySmallValue;
+            for (Operation operation : AllOperations) {
+                if (!game.CanOperate(game.SelfIdx, operation)) {
+                    continue;
+                }
+                double utility = UtilityOfMyMove(game, operation, ValueField, depth, should_finish_before);
+                if (utility > best_utility) {
+                    best_utility = utility;
+                    best_operations_by_depth[depth].clear();
+                    best_operations_by_depth[depth].push_back(operation);
+                } else if (utility == best_utility) {
+                    best_operations_by_depth[depth].push_back(operation);
+                }
             }
-            double utility = UtilityOfMyMove(game, operation, ValueField, DFSDepth, should_finish_before);
-            if (utility > best_utility) {
-                best_utility = utility;
-                best_operations.clear();
-                best_operations.push_back(operation);
-            } else if (utility == best_utility) {
-                best_operations.push_back(operation);
-            }
+            depth++;
         }
     } catch (NoTimeRemainException& e) {
-        exceed_time_limit = true;
-        best_operations.clear();
-        for (int i = 0; i < AllOperationCount; i++) {
-            best_operations.push_back(AllOperations[i]);
-        }
+        best_operations_by_depth.pop_back();
     }
 
+    std::vector<Operation> best_operations = best_operations_by_depth.size() > 0 ? best_operations_by_depth.back() : std::vector<Operation>();
     Operation best_operation = Shield;
     if (best_operations.empty()) {
         best_operation = Shield;
@@ -1158,6 +1200,6 @@ int main() {
     auto end_time = std::chrono::high_resolution_clock::now();
     std::cout << best_operation << " "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() << "ms"
-              << (exceed_time_limit ? " [T]" : "")
+              << ", " << depth << " depth"
               << std::endl;
 }

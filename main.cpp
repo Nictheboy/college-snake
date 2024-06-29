@@ -613,7 +613,7 @@ struct Game {
         SnakeInfos[snake_idx].Body.clear();
     }
 
-    void ImagineOperations(std::vector<SnakeIdxAndOperation> operations, bool lucky_tail_for_other_snake) {
+    void ImagineOperations(std::vector<SnakeIdxAndOperation> operations) {
         RevokeEntry r_entry;
         TimeRemain--;
         std::sort(operations.begin(), operations.end(), [](const SnakeIdxAndOperation& a, const SnakeIdxAndOperation& b) {
@@ -702,7 +702,6 @@ struct Game {
             }
             Map[head_h][head_w].Obj = None;
             lengthen += snake.Score / ScorePerLength - old_score / ScorePerLength;
-            lengthen = (lucky_tail_for_other_snake && snake.Idx != SelfIdx && (TotalTime - TimeRemain) % 10 == 0) ? LengthOfLengthBean : lengthen;
             if (lengthen-- > 0) {
                 ImagineTailLengthen(op.Idx, r_entry);
             }
@@ -1073,7 +1072,7 @@ double UtilityOfMyMove(Game& game,
             snake_operations.push_back({.Idx = snake_idx, .Op = operations[snake_idx]});
         }
         const int score_before = game.SnakeInfos[game.SelfIdx].Score;
-        game.ImagineOperations(snake_operations, true);
+        game.ImagineOperations(snake_operations);
         Field<double> ValueFieldWithNewDangerField = ValueField.Clone();
         Field<double> NewDangerField = CreateDangerField(game);
         ValueFieldWithNewDangerField = ValueFieldWithNewDangerField.MinWith(NewDangerField);

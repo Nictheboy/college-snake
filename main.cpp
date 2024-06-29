@@ -40,7 +40,7 @@ constexpr double DeclinePerCompetitivity = 0.50;
 constexpr double CorrectionForSpreadableFields = 0.15;
 
 constexpr double ValueOfTrap = -10;
-constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.3;
+constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.05;
 constexpr double ValueOfDeathPerRemainTime = -10;
 constexpr double ValueOfOpponentWhenHaveShield = -20;
 

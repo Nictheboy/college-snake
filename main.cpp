@@ -30,11 +30,12 @@ constexpr int RadiusOfMap = Height / 2 + Width / 2;
 constexpr double ValueSpreadDecline = 0.75;  // percentage
 constexpr double BaseValueOfScore = 0;
 constexpr double ValuePerScore = 100;
-constexpr double ValueOfLengthAtBegin = 500;
+constexpr double ValueOfLengthAtBegin = 0;
 constexpr double ValueOfLengthAtEnd = 0;
-constexpr double ValueOfCenter = 5000;
+constexpr double ValueOfCenter = 3000;
 constexpr double ValueOnlyInCenter = 0;
-constexpr int TickCenterValueBegin = 50;
+constexpr int TickCenterValueBegin = 100;
+constexpr int TickCenterLockBegin = 256;
 
 constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
@@ -949,11 +950,14 @@ Field<double> CreateValueField(Game& game) {
     const int longer = std::max(std::abs(h - CenterH), std::abs(w - CenterW));
     const int shorter = std::min(std::abs(h - CenterH), std::abs(w - CenterW));
     bool in_center = (longer <= 5 && shorter <= 2) || (longer <= 4 && shorter <= 4);
-    if (in_center) {
-        game.Map[CenterH - 5][CenterW].Obj = Wall;
-        game.Map[CenterH + 5][CenterW].Obj = Wall;
-        game.Map[CenterH][CenterW - 5].Obj = Wall;
-        game.Map[CenterH][CenterW + 5].Obj = Wall;
+    const bool center_lock = (TotalTime - game.TimeRemain) >= TickCenterLockBegin;
+    if (center_lock) {
+        if (in_center) {
+            game.Map[CenterH - 5][CenterW].Obj = Wall;
+            game.Map[CenterH + 5][CenterW].Obj = Wall;
+            game.Map[CenterH][CenterW - 5].Obj = Wall;
+            game.Map[CenterH][CenterW + 5].Obj = Wall;
+        }
     }
 
     Field<double> DangerField = CreateDangerField(game);
@@ -961,11 +965,13 @@ Field<double> CreateValueField(Game& game) {
     Field<double> CenterValueField = (!in_center && (TotalTime - game.TimeRemain) >= TickCenterValueBegin) ? CreateCenterValueField(game) : Field<double>(0);
     Field<double> ValueField = (ObjectValueField + CenterValueField).MinWith(DangerField);
 
-    if (in_center) {
-        game.Map[CenterH - 5][CenterW].Obj = None;
-        game.Map[CenterH + 5][CenterW].Obj = None;
-        game.Map[CenterH][CenterW - 5].Obj = None;
-        game.Map[CenterH][CenterW + 5].Obj = None;
+    if (center_lock) {
+        if (in_center) {
+            game.Map[CenterH - 5][CenterW].Obj = None;
+            game.Map[CenterH + 5][CenterW].Obj = None;
+            game.Map[CenterH][CenterW - 5].Obj = None;
+            game.Map[CenterH][CenterW + 5].Obj = None;
+        }
     }
 
     std::cerr.precision(2);

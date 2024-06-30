@@ -31,9 +31,11 @@ constexpr double BaseValueOfScore = 0;
 constexpr double ValuePerScore = 1;
 constexpr double ValueOfLengthAtBegin = 0;
 constexpr double ValueOfLengthAtEnd = 0;
-constexpr double ValueOfCenter = 20;
+constexpr double ValueOfCenterWhenEmerge = 200;
+constexpr double ValueOfCenterAtEnd = 20;
 constexpr double ValueOnlyInCenter = 0;
 constexpr int TickCenterValueBegin = 50;
+constexpr int TickCenterValueEnd = 250;
 
 constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
@@ -41,7 +43,7 @@ constexpr double CorrectionForSpreadableFields = 0.15;
 constexpr double LockOnCoefficient = 2.0;
 constexpr double DeclineOfObjectValueAtEdge = 0.5;
 
-constexpr double ValueOfTrap = -10;
+constexpr double ValueOfTrap = -50;
 constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.05;
 constexpr double ValueOfDeathPerRemainTime = -10;
 constexpr double ValueOfOpponentWhenHaveShield = -20;
@@ -1040,6 +1042,9 @@ Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerFiel
 }
 
 Field<double> CreateCenterValueField(Game& game) {
+    const int tick = TotalTime - game.TimeRemain;
+    const double time_percentage = ((double)tick - TickCenterValueBegin) / (TickCenterValueEnd - TickCenterValueBegin);
+    const double ValueOfCenter = time_percentage * ValueOfCenterAtEnd + (1 - time_percentage) * ValueOfCenterWhenEmerge;
     Field<double> CenterValueField;
     Field<int> DistanceField = CreateDistanceField(game, {.h = CenterH, .w = CenterW});
     const int radius_of_center = 5;
@@ -1064,9 +1069,10 @@ Field<double> CreateCenterValueField(Game& game) {
 }
 
 Field<double> CreateValueFieldWithoutDangerField(Game& game) {
+    const int tick = TotalTime - game.TimeRemain;
     Field<double> DangerField = CreateDangerField(game);
     Field<double> ObjectValueField = CreateObjectValueField(game, DangerField);
-    Field<double> CenterValueField = (TotalTime - game.TimeRemain >= TickCenterValueBegin) ? CreateCenterValueField(game) : Field<double>(0);
+    Field<double> CenterValueField = (tick >= TickCenterValueBegin && tick <= TickCenterValueEnd) ? CreateCenterValueField(game) : Field<double>(0);
     Field<double> ValueFieldWithoutDangerField = ObjectValueField + CenterValueField;
 
     std::cerr << "Danger Field:" << std::endl;

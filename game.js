@@ -190,6 +190,13 @@ function add_snake(snakeID) {
             if(finalY == 29){   // 下边也出界向上增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]] - 20;
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] - 20;
+                
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -197,6 +204,13 @@ function add_snake(snakeID) {
             else{  // 向下增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]] + 20;
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] + 20;
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -228,6 +242,13 @@ function add_snake(snakeID) {
             if(finalX == 39){   // 右边也出界向左增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]] - 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] - 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1];
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -235,6 +256,13 @@ function add_snake(snakeID) {
             else{  // 向右增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]] + 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] + 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1];
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -266,6 +294,13 @@ function add_snake(snakeID) {
             if(finalY == 29){   // 下边也出界向上增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] - 20;
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]] - 20;
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] - 20;              
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 3;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 3;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -273,6 +308,13 @@ function add_snake(snakeID) {
             else{  // 向下增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1];
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1] + 20;
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]] + 20;
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1];
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] + 20;
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 1;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 1;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -304,6 +346,13 @@ function add_snake(snakeID) {
             if(finalX == 39){   // 右边也出界向左增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] - 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]] - 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] - 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1];
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 2;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 2;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -311,6 +360,13 @@ function add_snake(snakeID) {
             else{  // 向右增长
                 otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID] - 1] + 20;
                 otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID] - 1];
+
+                //修正蛇分离
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]] = otherSnakeX[snakeID][otherSnakeLength[snakeID]] + 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]] = otherSnakeY[snakeID][otherSnakeLength[snakeID]];
+                otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeX[snakeID][otherSnakeLength[snakeID]-1] + 20;
+                otherSnakeY[snakeID][otherSnakeLength[snakeID]-1] = otherSnakeY[snakeID][otherSnakeLength[snakeID]-1];
+
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1] = 0;//1.0
                 otherSnakeDirection[snakeID][otherSnakeLength[snakeID]] = 0;
                 otherSnakePreDirection[snakeID][otherSnakeLength[snakeID]] = otherSnakeDirection[snakeID][otherSnakeLength[snakeID] - 1];
@@ -912,7 +968,7 @@ function btn_begin() {
             // 按照随机顺序生成蛇
             for (var k = 0; k < otherSnakeNumber; k++) {
                 var i = indices[k];
-                var theta = i * angleStep * Math.PI / 180; // 将角度转换为弧度
+                var theta = k * angleStep * Math.PI / 180; // 将角度转换为弧度
             
                 // 初始位置
                 var basicX = Math.round((centerX + radius * Math.cos(theta)) / 20) * 20+3;
@@ -1392,14 +1448,23 @@ function checkChoice() {
         }
     }
     console.log(choice_num)
-    shuffle(choice);
+
+    // const username = document.getElementById('username');
+    // const username = usernameElement.textContent.trim();
+    // console.log('Username:', username);
+
+    // shuffle(choice);
     if (choice_num > 29) {
         alert("你最多只能选29个选手呃...");
     }
+    // if (choice_num > 10) {
+    //     alert("你最多只能选10个选手呃...");
+    // }
     else if (choice_num < 1) {
         alert("你总得选点什么 ...");
     }
     if (choice_num <= 29) {
+    // if (choice_num <= 10) {
         otherSnakeNumber = choice_num;
         for (var i = 0; i < otherSnakeNumber; i++) {
             otherSnakeX[i] = new Array();

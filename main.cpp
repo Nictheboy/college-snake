@@ -39,6 +39,7 @@ constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
 constexpr double CorrectionForSpreadableFields = 0.15;
 constexpr double LockOnCoefficient = 2.0;
+constexpr double DeclineOfObjectValueAtEdge = 0.5;
 
 constexpr double ValueOfTrap = -10;
 constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.05;
@@ -52,7 +53,7 @@ constexpr double VeryLargeValue = 1e20;
 constexpr double UtilityPerScore = 2;
 constexpr double UtilityPerValue = 1;
 constexpr double UtilityOfShield = -100;
-constexpr double UtilityOfOpponentShield = 0;
+constexpr double UtilityOfOpponentShield = 5;
 constexpr double UtilityOfOpponentDeath = 40;
 constexpr double DeclinePerDepth = 0.8;  // 1.0 := no decline
 
@@ -1005,6 +1006,7 @@ Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerFiel
         SumField = SumField + Field;
     }
     Field<double> StandardlizedSumField = SumField.Standardlize(1.0);
+    Field<int> CenterDistanceField = CreateDistanceField(game, {.h = CenterH, .w = CenterW});
 
     Field<double> ObjectValueField(0);
     for (auto& Field : RawObjectFields) {
@@ -1012,6 +1014,7 @@ Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerFiel
         double field_value_at_my_pos = Field[my_h][my_w];
         field_weight *= std::pow(field_value_at_my_pos / (SumField[my_h][my_w] / RawObjectFields.size()), LockOnCoefficient);
         field_weight *= StandardlizedSumField[my_h][my_w];
+        field_weight *= 1.0 - DeclineOfObjectValueAtEdge * (double)CenterDistanceField[my_h][my_w] / RadiusOfMap;
         for (SnakeInfo& snake : game.SnakeInfos) {
             if (!snake.Alive || snake.Idx == game.SelfIdx) {
                 continue;

@@ -636,7 +636,7 @@ struct Game {
             }
         }
         SnakeInfos[snake_idx].Alive = false;
-        SnakeInfos[snake_idx].Body.clear();
+        // SnakeInfos[snake_idx].Body.clear();
     }
 
     void ImagineOperations(std::vector<SnakeIdxAndOperation> operations) {

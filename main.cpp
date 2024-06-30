@@ -38,12 +38,13 @@ constexpr int TickCenterValueBegin = 50;
 constexpr double BaseDeclineOfCompetitivity = 0.00;
 constexpr double DeclinePerCompetitivity = 0.50;
 constexpr double CorrectionForSpreadableFields = 0.15;
+constexpr double LockOnCoefficient = 2.0;
 
 constexpr double ValueOfTrap = -10;
 constexpr double PenaltyDeclineOfHeadToHeadDeath = 0.05;
 constexpr double ValueOfDeathPerRemainTime = -10;
 constexpr double ValueOfOpponentWhenHaveShield = -20;
-constexpr bool EnableDangerAroundOpponentHead = false;
+constexpr bool EnableSpreadableDangerAroundOpponentHead = false;
 
 constexpr double VerySmallValue = -1e20;
 constexpr double VeryLargeValue = 1e20;
@@ -854,7 +855,7 @@ Field<double> CreateDangerField(Game& game) {
             }
         }
     }
-    if (EnableDangerAroundOpponentHead) {
+    if (EnableSpreadableDangerAroundOpponentHead) {
         for (int idx = 0; idx < (int)game.SnakeInfos.size(); idx++) {
             if (!game.SnakeInfos[idx].Alive || idx == game.SelfIdx) {
                 continue;
@@ -917,6 +918,26 @@ Field<double> CreateDangerField(Game& game) {
             }
         }
     });
+    if (!EnableSpreadableDangerAroundOpponentHead) {
+        for (int idx = 0; idx < (int)game.SnakeInfos.size(); idx++) {
+            if (!game.SnakeInfos[idx].Alive || idx == game.SelfIdx) {
+                continue;
+            }
+            const int head_h = game.SnakeInfos[idx].Body.front().h;
+            const int head_w = game.SnakeInfos[idx].Body.front().w;
+            for (Operation direction : {Operation::Left, Operation::Up, Operation::Right, Operation::Down}) {
+                if (direction == Reverse(game.SnakeInfos[idx].LastOperation)) {
+                    continue;
+                }
+                const int h_next = head_h + DhOfOperation(direction);
+                const int w_next = head_w + DwOfOperation(direction);
+                if (h_next < 0 || h_next >= Height || w_next < 0 || w_next >= Width) {
+                    continue;
+                }
+                DangerField[h_next][w_next] = ValueOfDeathPerRemainTime * game.TimeRemain * PenaltyDeclineOfHeadToHeadDeath;
+            }
+        }
+    }
     return DangerField;
 }
 
@@ -989,7 +1010,7 @@ Field<double> CreateObjectValueField(Game& game, const Field<double>& DangerFiel
     for (auto& Field : RawObjectFields) {
         double field_weight = 1.0;
         double field_value_at_my_pos = Field[my_h][my_w];
-        field_weight *= field_value_at_my_pos / (SumField[my_h][my_w] / RawObjectFields.size());
+        field_weight *= std::pow(field_value_at_my_pos / (SumField[my_h][my_w] / RawObjectFields.size()), LockOnCoefficient);
         field_weight *= StandardlizedSumField[my_h][my_w];
         for (SnakeInfo& snake : game.SnakeInfos) {
             if (!snake.Alive || snake.Idx == game.SelfIdx) {

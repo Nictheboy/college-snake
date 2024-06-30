@@ -516,9 +516,25 @@ struct Game {
 
    private:
     struct RevokeEntry {
+        enum class ListOperation {
+            PushFront,
+            PopFront,
+            PushBack,
+            PopBack,
+        };
+        struct BodyRevokeAction {
+            ListOperation Op;
+            Point P;
+        };
         struct SnakeInfoRevokeEntry {
-            int SnakeIdx;
-            SnakeInfo Last;
+            int Idx;
+            bool Alive;
+            int Score;
+            Operation LastOperation;
+            int ShieldCD;  // cold delay
+            int ShieldET;  // effect time remaining
+
+            std::vector<BodyRevokeAction> BodyRevokeList;
         };
 
         struct MapRevokeEntry {
@@ -533,7 +549,7 @@ struct Game {
     std::stack<RevokeEntry> RevokeStack;
 
    public:
-    void ImagineTailLengthen(int snake_idx, RevokeEntry& r_entry) {
+    void ImagineTailLengthen(int snake_idx, RevokeEntry& r_entry, std::vector<int>& snake_revoke_entry_idxs) {
         const int tail_h = SnakeInfos[snake_idx].Body.back().h;
         const int tail_w = SnakeInfos[snake_idx].Body.back().w;
         const int pre_tail_h = (++SnakeInfos[snake_idx].Body.rbegin())->h;
@@ -589,6 +605,9 @@ struct Game {
             .W = next_w,
             .Last = Map[next_h][next_w],
         });
+        r_entry.SnakeInfoRevokeList[snake_revoke_entry_idxs[snake_idx]].BodyRevokeList.push_back(RevokeEntry::BodyRevokeAction{
+            .Op = RevokeEntry::ListOperation::PopBack,
+        });
         Map[next_h][next_w].SnakeIdx = snake_idx;
         SnakeInfos[snake_idx].Body.push_back(Point{.h = next_h, .w = next_w});
     }
@@ -626,12 +645,18 @@ struct Game {
         std::sort(operations.begin(), operations.end(), [](const SnakeIdxAndOperation& a, const SnakeIdxAndOperation& b) {
             return a.Idx < b.Idx;
         });
+        std::vector<int> snake_revoke_entry_idxs(SnakeInfos.size(), -1);
         for (const auto& op : operations) {
             SnakeInfo& snake = SnakeInfos[op.Idx];
             r_entry.SnakeInfoRevokeList.push_back(RevokeEntry::SnakeInfoRevokeEntry{
-                .SnakeIdx = op.Idx,
-                .Last = snake,
+                .Idx = op.Idx,
+                .Alive = snake.Alive,
+                .Score = snake.Score,
+                .LastOperation = snake.LastOperation,
+                .ShieldCD = snake.ShieldCD,
+                .ShieldET = snake.ShieldET,
             });
+            snake_revoke_entry_idxs[op.Idx] = r_entry.SnakeInfoRevokeList.size() - 1;
             if (op.Op == Operation::Shield) {
                 if (snake.ShieldCD > 0) {
                     ImagineDeath(op.Idx, r_entry);
@@ -675,6 +700,13 @@ struct Game {
                     .W = tail_w,
                     .Last = Map[tail_h][tail_w],
                 });
+                r_entry.SnakeInfoRevokeList[snake_revoke_entry_idxs[op.Idx]].BodyRevokeList.push_back(RevokeEntry::BodyRevokeAction{
+                    .Op = RevokeEntry::ListOperation::PopFront,
+                });
+                r_entry.SnakeInfoRevokeList[snake_revoke_entry_idxs[op.Idx]].BodyRevokeList.push_back(RevokeEntry::BodyRevokeAction{
+                    .Op = RevokeEntry::ListOperation::PushBack,
+                    .P = snake.Body.back(),
+                });
 
                 // Move Logic
                 snake.Body.push_front(Point{.h = head_h_next, .w = head_w_next});
@@ -710,7 +742,7 @@ struct Game {
             Map[head_h][head_w].Obj = None;
             lengthen += snake.Score / ScorePerLength - old_score / ScorePerLength;
             if (lengthen-- > 0) {
-                ImagineTailLengthen(op.Idx, r_entry);
+                ImagineTailLengthen(op.Idx, r_entry, snake_revoke_entry_idxs);
             }
         }
         for (const auto& op : operations) {
@@ -742,7 +774,29 @@ struct Game {
         TimeRemain++;
         for (int i = r_entry.SnakeInfoRevokeList.size() - 1; i >= 0; i--) {
             auto& item = r_entry.SnakeInfoRevokeList[i];
-            SnakeInfos[item.SnakeIdx] = item.Last;
+            SnakeInfos[item.Idx].Alive = item.Alive;
+            SnakeInfos[item.Idx].LastOperation = item.LastOperation;
+            SnakeInfos[item.Idx].Score = item.Score;
+            SnakeInfos[item.Idx].ShieldCD = item.ShieldCD;
+            SnakeInfos[item.Idx].ShieldET = item.ShieldET;
+
+            for (int i = item.BodyRevokeList.size() - 1; i >= 0; i--) {
+                auto& action = item.BodyRevokeList[i];
+                switch (action.Op) {
+                    case RevokeEntry::ListOperation::PushFront:
+                        SnakeInfos[item.Idx].Body.push_front(action.P);
+                        break;
+                    case RevokeEntry::ListOperation::PopFront:
+                        SnakeInfos[item.Idx].Body.pop_front();
+                        break;
+                    case RevokeEntry::ListOperation::PushBack:
+                        SnakeInfos[item.Idx].Body.push_back(action.P);
+                        break;
+                    case RevokeEntry::ListOperation::PopBack:
+                        SnakeInfos[item.Idx].Body.pop_back();
+                        break;
+                }
+            }
         }
         for (int i = r_entry.MapRevokeList.size() - 1; i >= 0; i--) {
             auto& item = r_entry.MapRevokeList[i];
@@ -1226,6 +1280,7 @@ int main() {
                     best_operations_by_depth[depth].push_back(operation);
                 }
             }
+            std::cerr << "Depth " << depth << " finished, current time: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time).count() << "ms" << std::endl;
             depth++;
         }
     } catch (NoTimeRemainException& e) {
